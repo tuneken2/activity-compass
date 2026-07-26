@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import uuid
+import zlib
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -22,6 +23,17 @@ EFFORT_HARD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PROJECT_RANK_PATTERN = re.compile(r"優先(?:順位|度)\s*[:：]?\s*(\d+)")
+CATEGORY_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+CATEGORY_COLORS = (
+    "#3C7160",
+    "#527792",
+    "#9B7B28",
+    "#7E5D8D",
+    "#B15939",
+    "#477A7A",
+    "#8A5F73",
+    "#657547",
+)
 
 
 def utc_now() -> str:
@@ -147,6 +159,9 @@ class Database:
             self._ensure_column(db, "items", "effort", "INTEGER NOT NULL DEFAULT 3")
             self._ensure_column(db, "items", "base_priority", "INTEGER")
             self._ensure_column(db, "items", "priority_reason", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(db, "items", "category", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(db, "items", "category_color", "TEXT")
+            self._ensure_column(db, "items", "project_rank", "INTEGER")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)"
             )
@@ -156,6 +171,43 @@ class Database:
             )
             self._backfill_project_links(db)
             self._backfill_priorities(db)
+            priorities = db.execute(
+                "SELECT DISTINCT priority FROM items WHERE entity_type = 'project'"
+            ).fetchall()
+            for row in priorities:
+                self._compact_project_ranks(db, int(row["priority"]))
+
+    @staticmethod
+    def _normalize_category(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip())[:50]
+
+    def _category_color(
+        self,
+        db: sqlite3.Connection,
+        category: str,
+        requested: Any = None,
+    ) -> str | None:
+        if not category:
+            return None
+        if requested:
+            color = str(requested).upper()
+            if not CATEGORY_COLOR_PATTERN.fullmatch(color):
+                raise ValueError("invalid category color")
+            return color
+        existing = db.execute(
+            """
+            SELECT category_color FROM items
+            WHERE entity_type = 'project'
+              AND category = ?
+              AND category_color IS NOT NULL
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (category,),
+        ).fetchone()
+        if existing:
+            return existing["category_color"]
+        index = zlib.crc32(category.encode("utf-8")) % len(CATEGORY_COLORS)
+        return CATEGORY_COLORS[index]
 
     @staticmethod
     def _ensure_column(
@@ -240,6 +292,74 @@ class Database:
             return max(0, min(3, int(value)))
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _normalize_explicit_priority(value: Any) -> int:
+        try:
+            priority = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("priority must be an integer from 1 to 3") from exc
+        if priority not in {1, 2, 3}:
+            raise ValueError("priority must be an integer from 1 to 3")
+        return priority
+
+    @staticmethod
+    def _normalize_project_rank(value: Any) -> int | None:
+        if value in (None, ""):
+            return None
+        try:
+            rank = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("project_rank must be a positive integer") from exc
+        if rank < 1:
+            raise ValueError("project_rank must be a positive integer")
+        return rank
+
+    def _place_project(
+        self,
+        db: sqlite3.Connection,
+        item_id: str,
+        priority: int,
+        requested_rank: Any = None,
+    ) -> None:
+        """Place a project in a dense, one-based order within its priority level."""
+        rows = db.execute(
+            """
+            SELECT id FROM items
+            WHERE entity_type = 'project' AND priority = ? AND id != ?
+            ORDER BY CASE WHEN project_rank IS NULL THEN 1 ELSE 0 END,
+                     project_rank, updated_at, id
+            """,
+            (priority, item_id),
+        ).fetchall()
+        rank = self._normalize_project_rank(requested_rank)
+        if rank is None:
+            rank = len(rows) + 1
+        rank = min(rank, len(rows) + 1)
+        ordered_ids = [row["id"] for row in rows]
+        ordered_ids.insert(rank - 1, item_id)
+        for position, project_id in enumerate(ordered_ids, start=1):
+            db.execute(
+                "UPDATE items SET project_rank = ? WHERE id = ?",
+                (position, project_id),
+            )
+
+    @staticmethod
+    def _compact_project_ranks(db: sqlite3.Connection, priority: int) -> None:
+        rows = db.execute(
+            """
+            SELECT id FROM items
+            WHERE entity_type = 'project' AND priority = ?
+            ORDER BY CASE WHEN project_rank IS NULL THEN 1 ELSE 0 END,
+                     project_rank, updated_at, id
+            """,
+            (priority,),
+        ).fetchall()
+        for position, row in enumerate(rows, start=1):
+            db.execute(
+                "UPDATE items SET project_rank = ? WHERE id = ?",
+                (position, row["id"]),
+            )
 
     def _infer_effort(self, item: dict[str, Any]) -> int:
         if item.get("effort") is not None:
@@ -412,7 +532,20 @@ class Database:
         title = str(payload.get("title", "")).strip()
         if not title:
             raise ValueError("title is required")
+        if payload.get("priority") is not None:
+            payload = {
+                **payload,
+                "priority": self._normalize_explicit_priority(payload["priority"]),
+            }
         with self.connect() as db:
+            category = (
+                self._normalize_category(payload.get("category"))
+                if entity_type == "project"
+                else ""
+            )
+            category_color = self._category_color(
+                db, category, payload.get("category_color")
+            )
             project_id = (
                 None
                 if entity_type == "project"
@@ -449,8 +582,9 @@ class Database:
                 INSERT INTO items (
                     id, entity_type, title, normalized_title, details, status,
                     due_at, scheduled_at, priority, confidence, created_at, updated_at,
-                    project_id, parent_project_id, effort, base_priority, priority_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    project_id, parent_project_id, effort, base_priority, priority_reason,
+                    category, category_color, project_rank
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_id,
@@ -470,8 +604,15 @@ class Database:
                     effort,
                     base_priority,
                     priority_reason,
+                    category,
+                    category_color,
+                    None,
                 ),
             )
+            if entity_type == "project":
+                self._place_project(
+                    db, item_id, priority, payload.get("project_rank")
+                )
             self._record_event(db, batch_id, "create", item_id, payload)
         return self.get_item(item_id)
 
@@ -504,6 +645,8 @@ class Database:
             rows = db.execute(
                 f"""
                 SELECT i.*, p.title AS project_title,
+                       p.category AS project_category,
+                       p.category_color AS project_category_color,
                        parent.title AS parent_project_title
                 FROM items i
                 LEFT JOIN items p ON p.id = i.project_id
@@ -512,6 +655,8 @@ class Database:
                 ORDER BY
                   CASE WHEN i.entity_type = 'project' THEN 0 ELSE 1 END,
                   i.priority DESC,
+                  CASE WHEN i.project_rank IS NULL THEN 1 ELSE 0 END,
+                  i.project_rank,
                   CASE i.status WHEN 'today' THEN 0 WHEN 'next' THEN 1
                     WHEN 'inbox' THEN 2 WHEN 'waiting' THEN 3 ELSE 4 END,
                   CASE WHEN i.due_at IS NULL THEN 1 ELSE 0 END,
@@ -548,9 +693,13 @@ class Database:
         with self.connect() as db:
             rows = db.execute(
                 f"""
-                SELECT * FROM items
-                WHERE {where}
-                ORDER BY updated_at DESC
+                SELECT i.*, p.title AS project_title,
+                       p.category AS project_category,
+                       p.category_color AS project_category_color
+                FROM items i
+                LEFT JOIN items p ON p.id = i.project_id
+                WHERE {where.replace("title", "i.title").replace("details", "i.details")}
+                ORDER BY i.updated_at DESC
                 LIMIT 100
                 """,
                 params,
@@ -673,9 +822,20 @@ class Database:
                 "effort",
                 "project_id",
                 "parent_project_id",
+                "category",
+                "category_color",
+                "project_rank",
             ):
                 if key in event and event[key] is not None:
                     updates[key] = event[key]
+            if "project_rank" in updates:
+                updates["project_rank"] = self._normalize_project_rank(
+                    updates["project_rank"]
+                )
+            if "priority" in updates:
+                updates["priority"] = self._normalize_explicit_priority(
+                    updates["priority"]
+                )
             if "project_title" in event and "project_id" not in updates:
                 with self.connect() as lookup:
                     resolved_project = self._resolve_project_id(lookup, event, batch_id)
@@ -699,10 +859,44 @@ class Database:
             updates["normalized_title"] = normalize_title(str(updates["title"]))
         columns = ", ".join(f"{key} = ?" for key in updates)
         with self.connect() as db:
+            if target["entity_type"] == "project" and (
+                "category" in updates or "category_color" in updates
+            ):
+                category = self._normalize_category(
+                    updates.get("category", target.get("category"))
+                )
+                requested_color = (
+                    updates.get("category_color")
+                    if "category_color" in updates
+                    else (
+                        target.get("category_color")
+                        if category == target.get("category")
+                        else None
+                    )
+                )
+                updates["category"] = category
+                updates["category_color"] = self._category_color(
+                    db, category, requested_color
+                )
+                columns = ", ".join(f"{key} = ?" for key in updates)
             db.execute(
                 f"UPDATE items SET {columns} WHERE id = ?",
                 (*updates.values(), item_id),
             )
+            if target["entity_type"] == "project" and updates.get("category"):
+                db.execute(
+                    """
+                    UPDATE items
+                    SET category_color = ?, updated_at = ?
+                    WHERE entity_type = 'project' AND category = ? AND id != ?
+                    """,
+                    (
+                        updates["category_color"],
+                        now,
+                        updates["category"],
+                        item_id,
+                    ),
+                )
             refreshed = dict(
                 db.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
             )
@@ -721,6 +915,17 @@ class Database:
                 """,
                 (priority, effort, base_priority, reason, item_id),
             )
+            if target["entity_type"] == "project":
+                if int(target.get("priority") or 0) != priority:
+                    self._compact_project_ranks(
+                        db, int(target.get("priority") or 0)
+                    )
+                self._place_project(
+                    db,
+                    item_id,
+                    priority,
+                    event.get("project_rank", refreshed.get("project_rank")),
+                )
             self._record_event(db, batch_id, action, item_id, event)
         return "updated"
 
@@ -809,6 +1014,9 @@ class Database:
             "effort",
             "project_id",
             "parent_project_id",
+            "category",
+            "category_color",
+            "project_rank",
         }
         updates = {key: value for key, value in payload.items() if key in allowed}
         if not updates:
@@ -820,7 +1028,13 @@ class Database:
         if "effort" in updates:
             updates["effort"] = max(1, min(5, int(updates["effort"])))
         if "priority" in updates:
-            updates["priority"] = self._clamp_priority(updates["priority"])
+            updates["priority"] = self._normalize_explicit_priority(
+                updates["priority"]
+            )
+        if "project_rank" in updates:
+            updates["project_rank"] = self._normalize_project_rank(
+                updates["project_rank"]
+            )
         if "title" in updates:
             title = str(updates["title"]).strip()
             if not title:
@@ -836,6 +1050,27 @@ class Database:
             if not current:
                 raise KeyError(item_id)
             resulting_type = updates.get("entity_type", current["entity_type"])
+            old_priority = int(current["priority"] or 0)
+            if resulting_type == "project":
+                category = self._normalize_category(
+                    updates.get("category", current["category"])
+                )
+                requested_color = (
+                    updates.get("category_color")
+                    if "category_color" in updates
+                    else (
+                        current["category_color"]
+                        if category == current["category"]
+                        else None
+                    )
+                )
+                updates["category"] = category
+                updates["category_color"] = self._category_color(
+                    db, category, requested_color
+                )
+            else:
+                updates["category"] = ""
+                updates["category_color"] = None
             if updates.get("project_id"):
                 project = db.execute(
                     "SELECT id FROM items WHERE id = ? AND entity_type = 'project'",
@@ -870,6 +1105,7 @@ class Database:
                     )
             if resulting_type != "project":
                 updates["parent_project_id"] = None
+                updates["project_rank"] = None
             if resulting_type == "project":
                 updates["project_id"] = None
             columns = ", ".join(f"{key} = ?" for key in updates)
@@ -879,12 +1115,42 @@ class Database:
             )
             if cursor.rowcount == 0:
                 raise KeyError(item_id)
+            if resulting_type == "project" and updates.get("category"):
+                db.execute(
+                    """
+                    UPDATE items
+                    SET category_color = ?, updated_at = ?
+                    WHERE entity_type = 'project' AND category = ? AND id != ?
+                    """,
+                    (
+                        updates["category_color"],
+                        updates["updated_at"],
+                        updates["category"],
+                        item_id,
+                    ),
+                )
             self._refresh_priority(
                 db,
                 item_id,
                 priority_explicit="priority" in payload,
             )
             if resulting_type == "project":
+                refreshed_project = db.execute(
+                    "SELECT priority, project_rank FROM items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
+                if old_priority != refreshed_project["priority"]:
+                    self._compact_project_ranks(db, old_priority)
+                self._place_project(
+                    db,
+                    item_id,
+                    int(refreshed_project["priority"]),
+                    (
+                        payload.get("project_rank")
+                        if "project_rank" in payload
+                        else refreshed_project["project_rank"]
+                    ),
+                )
                 child_rows = db.execute(
                     "SELECT id FROM items WHERE project_id = ?", (item_id,)
                 ).fetchall()
@@ -978,6 +1244,14 @@ class Database:
         }
         target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return target
+
+    def change_token(self) -> int:
+        """Return a cheap, monotonic token for changes visible in the UI."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT COALESCE(MAX(rowid), 0) AS token FROM activity_events"
+            ).fetchone()
+        return int(row["token"])
 
     def due_notifications(self) -> list[dict[str, Any]]:
         with self.connect() as db:

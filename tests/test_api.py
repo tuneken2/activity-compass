@@ -35,6 +35,14 @@ class ApiEncodingTests(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
 
+    def get_json(self, path: str) -> tuple[int, dict, dict]:
+        with urllib.request.urlopen(self.base_url + path, timeout=2) as response:
+            return (
+                response.status,
+                json.loads(response.read().decode("utf-8")),
+                dict(response.headers),
+            )
+
     def test_utf8_round_trip(self) -> None:
         status, body = self.post_json(
             "/v1/items",
@@ -58,6 +66,24 @@ class ApiEncodingTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("appears corrupted", body["error"])
         self.assertEqual(self.db.list_items(), [])
+
+    def test_change_token_advances_after_api_write(self) -> None:
+        _, before, _ = self.get_json("/v1/changes")
+
+        status, _ = self.post_json(
+            "/v1/items",
+            {"entity_type": "task", "title": "自動更新を確認する"},
+        )
+        _, after, _ = self.get_json("/v1/changes")
+
+        self.assertEqual(status, 201)
+        self.assertGreater(after["token"], before["token"])
+
+    def test_get_responses_disable_caching(self) -> None:
+        status, _, headers = self.get_json("/v1/items?view=all")
+
+        self.assertEqual(status, 200)
+        self.assertIn("no-store", headers["Cache-Control"])
 
 
 if __name__ == "__main__":

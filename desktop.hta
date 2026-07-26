@@ -26,6 +26,7 @@
     .brand { margin: 0 24px 34px; color: #fff; font-size: 20px; font-weight: 700; line-height: 1.06; letter-spacing: .04em; }
     .nav { display: block; width: 100%; border: 0; text-align: left; padding: 12px 22px; background: transparent; color: #dce7e1; cursor: pointer; font-size: 14px; }
     .nav:hover, .nav.active { background: #2b3833; color: #fff; }
+    .nav.exit { color: #d5a18e; }
     .nav-count { float: right; color: #84948c; }
     .motto { position: absolute; left: 24px; bottom: 20px; color: #84948c; font-size: 12px; line-height: 1.7; }
     .main { -ms-flex: 1; flex: 1; min-width: 0; padding: 24px 28px; }
@@ -33,6 +34,10 @@
     h1 { margin: 0; font-size: 27px; font-weight: 650; }
     .result-count { margin-left: 12px; color: #6e7773; font-size: 13px; }
     .search { margin-left: auto; width: 240px; padding: 9px 12px; border: 1px solid #dedcd3; background: #fff; outline: none; }
+    .refresh { margin-left: auto; padding: 8px 12px; border: 1px solid #c9c7be; background: #fff; color: #315e4f; cursor: pointer; font-size: 12px; }
+    .refresh:hover { background: #ece9df; }
+    .refresh:disabled { color: #8c928f; cursor: default; }
+    .search + .refresh { margin-left: 8px; }
     .quick { height: 51px; display: -ms-flexbox; display: flex; margin-bottom: 14px; border: 1px solid #dedcd3; background: #fff; }
     .quick input { -ms-flex: 1; flex: 1; border: 0; padding: 0 15px; font-size: 15px; outline: none; }
     .primary { border: 0; background: #d4673d; color: #fff; padding: 0 23px; margin: 5px; cursor: pointer; font-weight: 600; }
@@ -54,6 +59,7 @@
     .c-title { font-size: 14px; line-height: 20px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .c-meta { height: 22px; color: #77807c; font-size: 11px; line-height: 22px; white-space: nowrap; overflow: hidden; }
     .type-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; background: #e8f0ec; color: #315e4f; font-weight: 600; }
+    .category-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; color: #fff; font-weight: 600; }
     .status-text { margin-right: 9px; }
     .c-priority { width: 76px; -ms-flex: 0 0 76px; flex: 0 0 76px; padding-top: 20px; text-align: center; color: #d4673d; font-size: 11px; font-weight: 700; }
     .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
@@ -110,6 +116,7 @@
       <button class="nav" id="nav-history" onclick="changeView('history')">更新履歴</button>
       <button class="nav" id="nav-all" onclick="changeView('all')">すべて</button>
       <button class="nav" onclick="exportData()">データを書き出す</button>
+      <button class="nav exit" onclick="exitApplication()">終了</button>
       <div class="motto">会話で決まったことを<br />頭の外へ。</div>
     </aside>
     <main class="main">
@@ -117,6 +124,7 @@
         <h1 id="heading">プロジェクト</h1>
         <span class="result-count" id="resultCount"></span>
         <input class="search" id="searchInput" placeholder="検索" onkeydown="if(event.keyCode===13){searchItems();}" />
+        <button class="refresh" id="refreshButton" onclick="manualRefresh()" title="最新のタスクを読み込む">↻ 更新</button>
       </div>
       <div class="quick">
         <input id="quickInput" placeholder="新しいタスクを追加" onkeydown="if(event.keyCode===13){quickAdd();}" />
@@ -154,12 +162,21 @@
     var labels = {today:"今日", next:"次にやる", waiting:"待ち", someday:"いつか", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
     var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
     var statusLabels = {inbox:"未整理", today:"今日", next:"次に", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
+    var categoryColors = [
+      {value:"#3C7160", label:"深緑"}, {value:"#527792", label:"青"},
+      {value:"#9B7B28", label:"黄土"}, {value:"#7E5D8D", label:"紫"},
+      {value:"#B15939", label:"橙"}, {value:"#477A7A", label:"青緑"},
+      {value:"#8A5F73", label:"赤紫"}, {value:"#657547", label:"若草"}
+    ];
     var allRows = [];
     var projectRoots = [];
     var hiddenProjectRoots = {};
     var projectCatalog = [];
     var projectChildRows = [];
     var expandedProjects = {};
+    var activeQuery = "";
+    var lastChangeToken = 0;
+    var changePollInFlight = false;
 
     function escapeHtml(value) {
       return String(value === null || value === undefined ? "" : value)
@@ -167,9 +184,20 @@
         .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     }
 
+    function rowCategory(row) {
+      if (row.entity_type === "project") {
+        return {name:row.category || "", color:row.category_color || ""};
+      }
+      return {name:row.project_category || "", color:row.project_category_color || ""};
+    }
+
     function request(method, path, data, done) {
       var xhr = new XMLHttpRequest();
-      xhr.open(method, API + path, true);
+      var requestPath = path;
+      if (method === "GET") {
+        requestPath += (requestPath.indexOf("?") >= 0 ? "&" : "?") + "_=" + new Date().getTime();
+      }
+      xhr.open(method, API + requestPath, true);
       xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
@@ -184,6 +212,7 @@
 
     function changeView(next) {
       view = next;
+      activeQuery = "";
       selectedIndex = -1;
       document.getElementById("searchInput").value = "";
       document.getElementById("heading").innerText = labels[view];
@@ -194,13 +223,18 @@
       loadRows();
     }
 
-    function loadRows(query) {
+    function loadRows(query, done) {
+      if (typeof query === "undefined") query = activeQuery;
       var path;
       if (query) path = "/v1/items?q=" + encodeURIComponent(query);
       else if (view === "history") path = "/v1/history";
       else path = "/v1/items?view=" + encodeURIComponent(view);
       request("GET", path, null, function(err, data) {
-        if (err) { showOffline(); return; }
+        if (err) {
+          showOffline();
+          if (done) done(err);
+          return;
+        }
         allRows = view === "history" && !query ? data.events : data.items;
         if (data.counts) updateCounts(data.counts);
         selectedIndex = -1;
@@ -209,11 +243,13 @@
             projectChildRows = childErr || !childData.items ? [] : childData.items;
             renderRows();
             clearDetail();
+            if (done) done(childErr);
           });
         } else {
           rows = allRows.slice(0);
           renderRows(query);
           clearDetail();
+          if (done) done(null);
         }
       });
     }
@@ -255,6 +291,7 @@
             return parentCompare || String(a.title).localeCompare(String(b.title));
           }
           return Number(b.priority || 0) - Number(a.priority || 0) ||
+            Number(a.project_rank || 999999) - Number(b.project_rank || 999999) ||
             String(a.root_project_title || a.title).localeCompare(String(b.root_project_title || b.title));
         });
         rows = [];
@@ -284,14 +321,20 @@
         var date = formatListDate(dateValue, dateKind);
         var rowType = isHistory || isReview ? "task" : (row.entity_type || "task");
         var priorityValue = Number(row.priority || 0);
-        var priority = priorityValue === 3 ? "3 高" : (priorityValue === 2 ? "2 中" : (priorityValue === 1 ? "1 低" : "0"));
+        var priority = priorityValue === 3 ? "高" : (priorityValue === 2 ? "中" : (priorityValue === 1 ? "低" : "—"));
+        var category = rowCategory(row);
+        var categoryBadge = category.name
+          ? '<span class="category-pill" style="background:' + escapeHtml(category.color || "#77736B") + '">' + escapeHtml(category.name) + '</span>'
+          : '';
+        var accentStyle = category.color ? ' style="background:' + escapeHtml(category.color) + '"' : '';
         if (isProject) status = "子タスク " + childCount + "件 · " + (expandedProjects[row.id] ? "クリックで閉じる" : "クリックで展開");
         var projectClass = isProject ? " project-row" + (expandedProjects[row.id] ? " expanded" : "") : (isProjectOverview ? " project-child" : "");
         var clickAction = isProject ? "toggleProject(" + i + ")" : "selectRow(" + i + ")";
         html += '<div class="row row-type-' + escapeHtml(rowType) + projectClass + (date.overdue ? ' overdue' : '') + '" id="row-' + i + '" onclick="' + clickAction + '">' +
-          '<div class="row-accent"></div><div class="row-main">' +
+          '<div class="row-accent"' + accentStyle + '></div><div class="row-main">' +
           '<div class="c-title">' + escapeHtml(title) + '</div>' +
           '<div class="c-meta"><span class="type-pill">' + escapeHtml(type) + '</span>' +
+          categoryBadge +
           '<span class="status-text">' + escapeHtml(status) + '</span>' +
           '</div></div><div class="c-priority" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
           '<div class="c-date"><span class="date-main">' + escapeHtml(date.main) + '</span>' +
@@ -363,12 +406,15 @@
           '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project"], row.entity_type) + '</select>' +
           '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","waiting","someday","done","cancelled"], row.status) + '</select>' +
           (row.entity_type === "project"
-            ? '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
+            ? '<label class="label">カテゴリー</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
+              '<label class="label">カテゴリー色</label><select id="editCategoryColor">' + categoryColorOptions(row.category_color) + '</select>' +
+              '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" value="' + escapeHtml(row.project_rank || "") + '" />' +
+              '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
             : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
           '<label class="label">期限（空欄なら無期限）</label><input id="editDue" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
           '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />' +
           '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
-          '<label class="label">優先度（自動）</label><input readonly value="' + escapeHtml(String(row.priority || 0) + " — " + (row.priority_reason || "")) + '" />' +
+          '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" value="' + escapeHtml(row.priority || 2) + '" />' +
           '<label class="label">詳細</label><textarea id="editDetails">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
           '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
@@ -397,6 +443,18 @@
       return html;
     }
 
+    function categoryColorOptions(selected) {
+      var html = "";
+      var selectedColor = String(selected || "#3C7160").toUpperCase();
+      for (var i=0; i<categoryColors.length; i++) {
+        var item = categoryColors[i];
+        html += '<option value="' + item.value + '"' +
+          (item.value === selectedColor ? ' selected' : '') + '>' +
+          item.label + ' (' + item.value + ')</option>';
+      }
+      return html;
+    }
+
     function loadProjectCatalog() {
       request("GET", "/v1/items?view=projects", null, function(err, data) {
         if (!err && data.items) projectCatalog = data.items;
@@ -416,8 +474,41 @@
 
     function searchItems() {
       var query = document.getElementById("searchInput").value.replace(/^\s+|\s+$/g, "");
+      activeQuery = query;
       document.getElementById("heading").innerText = query ? "検索: " + query : labels[view];
       loadRows(query);
+    }
+
+    function refreshData(showFeedback) {
+      var button = document.getElementById("refreshButton");
+      if (showFeedback) {
+        button.disabled = true;
+        button.innerText = "更新中...";
+      }
+      loadProjectCatalog();
+      loadRows(undefined, function(err) {
+        if (!showFeedback) return;
+        button.disabled = false;
+        button.innerText = err ? "再試行" : "✓ 更新済み";
+        setTimeout(function(){ button.innerText = "↻ 更新"; }, 1400);
+      });
+    }
+
+    function manualRefresh() {
+      refreshData(true);
+    }
+
+    function pollChanges() {
+      if (changePollInFlight) return;
+      changePollInFlight = true;
+      request("GET", "/v1/changes", null, function(err, data) {
+        changePollInFlight = false;
+        if (err || typeof data.token === "undefined") return;
+        if (data.token !== lastChangeToken) {
+          lastChangeToken = data.token;
+          refreshData(false);
+        }
+      });
     }
 
     function saveItem() {
@@ -430,10 +521,14 @@
         due_at: document.getElementById("editDue").value || null,
         scheduled_at: document.getElementById("editScheduled").value || null,
         effort: Number(document.getElementById("editEffort").value || 3),
+        priority: Number(document.getElementById("editPriority").value || 2),
         details: document.getElementById("editDetails").value
       };
       if (row.entity_type === "project") {
         payload.parent_project_id = document.getElementById("editParentProject").value || null;
+        payload.category = document.getElementById("editCategory").value;
+        payload.category_color = document.getElementById("editCategoryColor").value;
+        payload.project_rank = document.getElementById("editProjectRank").value || null;
       } else {
         payload.project_id = document.getElementById("editProject").value || null;
       }
@@ -468,6 +563,17 @@
       });
     }
 
+    function exitApplication() {
+      if (!confirm("Activity Compassを終了しますか？")) return;
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "http://127.0.0.1:8766/exit", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) window.close();
+      };
+      xhr.send("{}");
+    }
+
     function showOffline() {
       document.getElementById("rows").innerHTML = '<div class="empty">Activity Compassの保存機能に接続できません。<br />アプリを開き直してください。</div>';
     }
@@ -488,7 +594,8 @@
       loadRows();
       loadProjectCatalog();
       pollReminders();
-      setInterval(function(){ loadRows(); }, 15000);
+      pollChanges();
+      setInterval(pollChanges, 1000);
       setInterval(pollReminders, 30000);
     };
   </script>

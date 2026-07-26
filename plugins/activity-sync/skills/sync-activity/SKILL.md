@@ -16,12 +16,15 @@ description: Extract activity changes from the current conversation and send the
 - `decision`: 採用された判断
 - `project`: 複数行動を含む継続プロジェクト
 
-各イベントに `action`, `entity_type`, `title`, `confidence` を必ず付ける。分かる場合だけ `details`, `due_at`, `scheduled_at`, `status`, `project_id`, `project_title`, `parent_project_id`, `effort`, `target_id`, `source_excerpt` を付ける。
+各イベントに `action`, `entity_type`, `title`, `confidence` を必ず付ける。分かる場合だけ `details`, `due_at`, `scheduled_at`, `status`, `project_id`, `project_title`, `parent_project_id`, `project_rank`, `category`, `category_color`, `effort`, `target_id`, `source_excerpt` を付ける。
 
 - タスク等の所属プロジェクトが会話から分かる場合は、検索でIDを確認できれば `project_id`、確認できなければ `project_title` を付ける。
 - プロジェクト自体に親プロジェクトがある場合は `parent_project_id` を付ける。
+- プロジェクトのカテゴリーが明示されている場合は `category` を付ける。色も明示されている場合だけ `category_color` を `#RRGGBB` 形式で付ける。同名カテゴリーの既存色はアプリが再利用する。
 - 実装難易度・工数が分かる場合は `effort` を1（小）〜5（大）で付ける。
 - `priority` はプロジェクトの運用優先度を明示的に登録・変更する場合だけ送る。通常のタスク優先度はアプリが所属プロジェクト、期限、工数から自動算出する。
+- `priority` は数字の `3`（高）、`2`（中）、`1`（低）で送る。
+- `project_rank` は同一優先度内でのプロジェクトの序列を1始まりの正整数で送る。1が先頭。省略時は同じ優先度の末尾に追加される。
 
 `action` は `create`, `update`, `complete`, `cancel`, `defer`, `note` のいずれかにする。
 

@@ -118,6 +118,11 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                                         project_id = [ordered]@{ type = "string" }
                                         project_title = [ordered]@{ type = "string" }
                                         parent_project_id = [ordered]@{ type = "string" }
+                                        category = [ordered]@{ type = "string"; maxLength = 50 }
+                                        category_color = [ordered]@{
+                                            type = "string"
+                                            pattern = "^#[0-9A-Fa-f]{6}$"
+                                        }
                                         effort = [ordered]@{ type = "integer"; minimum = 1; maximum = 5 }
                                         target_id = [ordered]@{ type = "string" }
                                         confidence = [ordered]@{ type = "number"; minimum = 0; maximum = 1 }

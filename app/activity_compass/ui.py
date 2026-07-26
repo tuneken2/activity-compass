@@ -64,7 +64,26 @@ TYPE_COLORS = {
     "project": ("#F5E6DF", "#8A482F"),
 }
 
+CATEGORY_COLORS = (
+    "#3C7160",
+    "#527792",
+    "#9B7B28",
+    "#7E5D8D",
+    "#B15939",
+    "#477A7A",
+    "#8A5F73",
+    "#657547",
+)
+
 DEFAULT_VIEW = "projects"
+
+
+def format_priority(priority: Any) -> str:
+    try:
+        value = int(priority or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return {3: "高", 2: "中", 1: "低"}.get(value, "—")
 
 
 def format_list_date(value: str | None, kind: str) -> tuple[str, str]:
@@ -499,9 +518,21 @@ class ActivityCompassApp(tk.Tk):
         badge_bg, badge_fg = TYPE_COLORS.get(
             entity_type, (COLORS["soft"], COLORS["muted"])
         )
+        category = (
+            row.get("category")
+            if entity_type == "project"
+            else row.get("project_category")
+        )
+        category_color = (
+            row.get("category_color")
+            if entity_type == "project"
+            else row.get("project_category_color")
+        )
         accent_color = badge_fg if not (
             self.current_view in {"review", "history"} and not self.search_query
         ) else COLORS["muted"]
+        if category and category_color:
+            accent_color = category_color
 
         item = tk.Frame(
             self.list_rows,
@@ -539,8 +570,7 @@ class ActivityCompassApp(tk.Tk):
         )
         due_label.pack(fill="x", padx=(4, 16))
 
-        priority = int(row.get("priority") or 0)
-        priority_text = {3: "3 高", 2: "2 中", 1: "1 低"}.get(priority, "0")
+        priority_text = format_priority(row.get("priority"))
         priority_column = tk.Label(
             item,
             text=priority_text,
@@ -572,6 +602,16 @@ class ActivityCompassApp(tk.Tk):
             font=("Segoe UI Semibold", 8),
         )
         kind_label.pack(side="left")
+        category_label: tk.Label | None = None
+        if category:
+            category_label = tk.Label(
+                meta,
+                text=f"  {category}  ",
+                bg=category_color or COLORS["muted"],
+                fg="white",
+                font=("Segoe UI Semibold", 8),
+            )
+            category_label.pack(side="left", padx=(6, 0))
         status_label = tk.Label(
             meta,
             text=status,
@@ -595,6 +635,8 @@ class ActivityCompassApp(tk.Tk):
             priority_column,
         ]
         clickable = surfaces + [accent, kind_label]
+        if category_label:
+            clickable.append(category_label)
         for widget in clickable:
             if on_click:
                 widget.bind("<Button-1>", lambda _, action=on_click: action())
@@ -708,7 +750,7 @@ class ActivityCompassApp(tk.Tk):
     def open_editor(self, item: dict[str, Any]) -> None:
         dialog = tk.Toplevel(self)
         dialog.title("項目を編集")
-        dialog.geometry("480x510")
+        dialog.geometry("480x660")
         dialog.transient(self)
         dialog.grab_set()
         dialog.configure(bg=COLORS["bg"])
@@ -747,12 +789,32 @@ class ActivityCompassApp(tk.Tk):
         )
         status.set(item.get("status", "inbox"))
         status.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        category = labeled_entry("カテゴリー（プロジェクトのみ）", item.get("category") or "")
+        tk.Label(
+            fields, text="カテゴリー色", bg=COLORS["bg"], fg=COLORS["muted"],
+            font=("Segoe UI Semibold", 9),
+        ).pack(anchor="w", pady=(8, 3))
+        category_color = ttk.Combobox(
+            fields,
+            values=CATEGORY_COLORS,
+            state="readonly",
+        )
+        category_color.set(item.get("category_color") or CATEGORY_COLORS[0])
+        category_color.pack(fill="x")
         due_at = labeled_entry("期限（空欄なら無期限）", item.get("due_at") or "")
         scheduled_at = labeled_entry("予定日時（例: 2026-08-03 10:00）", item.get("scheduled_at") or "")
         effort = labeled_entry("実装難易度 / 工数（1〜5）", str(item.get("effort") or 3))
+        priority = labeled_entry(
+            "優先度（数字で入力: 3=高 / 2=中 / 1=低）",
+            str(item.get("priority") or 2),
+        )
+        project_rank = labeled_entry(
+            "同一優先度内の序列（プロジェクトのみ・1が先頭）",
+            str(item.get("project_rank") or ""),
+        )
         tk.Label(
             fields,
-            text=f"優先度（自動）: {item.get('priority', 0)}  {item.get('priority_reason', '')}",
+            text=f"現在の表示: {format_priority(item.get('priority'))}  {item.get('priority_reason', '')}",
             bg=COLORS["bg"],
             fg=COLORS["muted"],
             font=("Segoe UI", 8),
@@ -778,6 +840,15 @@ class ActivityCompassApp(tk.Tk):
                         "due_at": due_at.get().strip() or None,
                         "scheduled_at": scheduled_at.get().strip() or None,
                         "effort": max(1, min(5, int(effort.get() or 3))),
+                        "priority": max(1, min(3, int(priority.get() or 2))),
+                        "project_rank": (
+                            int(project_rank.get())
+                            if entity_type.get() == "project"
+                            and project_rank.get().strip()
+                            else None
+                        ),
+                        "category": category.get(),
+                        "category_color": category_color.get(),
                         "details": details.get("1.0", "end").strip(),
                     },
                 )

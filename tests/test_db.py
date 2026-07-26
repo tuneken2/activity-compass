@@ -181,6 +181,147 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(project["priority"], 3)
         self.assertIn("概要基準", project["priority_reason"])
 
+    def test_project_category_is_saved_and_inherited_by_tasks(self) -> None:
+        project = self.db.create_item(
+            {
+                "title": "顧客向けアプリ",
+                "entity_type": "project",
+                "category": "仕事",
+                "category_color": "#527792",
+            }
+        )
+        self.db.create_item(
+            {
+                "title": "画面を実装する",
+                "entity_type": "task",
+                "project_id": project["id"],
+            }
+        )
+
+        task = self.db.list_items("project_tasks")[0]
+        self.assertEqual(project["category"], "仕事")
+        self.assertEqual(project["category_color"], "#527792")
+        self.assertEqual(task["project_category"], "仕事")
+        self.assertEqual(task["project_category_color"], "#527792")
+
+    def test_same_category_reuses_and_updates_its_color(self) -> None:
+        first = self.db.create_item(
+            {
+                "title": "第一プロジェクト",
+                "entity_type": "project",
+                "category": "個人開発",
+                "category_color": "#7E5D8D",
+            }
+        )
+        second = self.db.create_item(
+            {
+                "title": "第二プロジェクト",
+                "entity_type": "project",
+                "category": "個人開発",
+            }
+        )
+        self.assertEqual(second["category_color"], "#7E5D8D")
+
+        self.db.update_item(
+            second["id"],
+            {"category": "個人開発", "category_color": "#B15939"},
+        )
+        self.assertEqual(self.db.get_item(first["id"])["category_color"], "#B15939")
+
+    def test_invalid_project_category_color_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid category color"):
+            self.db.create_item(
+                {
+                    "title": "不正色プロジェクト",
+                    "entity_type": "project",
+                    "category": "仕事",
+                    "category_color": "red",
+                }
+            )
+
+    def test_projects_have_dense_rank_within_each_priority(self) -> None:
+        first = self.db.create_item(
+            {
+                "title": "高優先度の先行プロジェクト",
+                "entity_type": "project",
+                "priority": 3,
+            }
+        )
+        second = self.db.create_item(
+            {
+                "title": "高優先度の後続プロジェクト",
+                "entity_type": "project",
+                "priority": 3,
+            }
+        )
+        low = self.db.create_item(
+            {
+                "title": "低優先度プロジェクト",
+                "entity_type": "project",
+                "priority": 1,
+            }
+        )
+
+        self.assertEqual(first["project_rank"], 1)
+        self.assertEqual(second["project_rank"], 2)
+        self.assertEqual(low["project_rank"], 1)
+
+        self.db.update_item(second["id"], {"project_rank": 1})
+        projects = self.db.list_items("projects")
+        self.assertEqual(
+            [item["id"] for item in projects],
+            [second["id"], first["id"], low["id"]],
+        )
+        self.assertEqual(self.db.get_item(first["id"])["project_rank"], 2)
+
+    def test_project_rank_must_be_a_positive_integer(self) -> None:
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            self.db.create_item(
+                {
+                    "title": "不正序列プロジェクト",
+                    "entity_type": "project",
+                    "priority": 2,
+                    "project_rank": 0,
+                }
+            )
+
+    def test_manual_priority_accepts_only_numbers_one_to_three(self) -> None:
+        project = self.db.create_item(
+            {
+                "title": "数値優先度プロジェクト",
+                "entity_type": "project",
+                "priority": "3",
+            }
+        )
+        self.assertEqual(project["priority"], 3)
+        with self.assertRaisesRegex(ValueError, "1 to 3"):
+            self.db.update_item(project["id"], {"priority": "高"})
+
+    def test_sync_can_update_project_category(self) -> None:
+        project = self.db.create_item(
+            {"title": "分類対象", "entity_type": "project"}
+        )
+        result = self.db.sync(
+            {
+                "events": [
+                    {
+                        "action": "update",
+                        "entity_type": "project",
+                        "target_id": project["id"],
+                        "title": project["title"],
+                        "category": "学習",
+                        "category_color": "#657547",
+                        "confidence": 0.99,
+                    }
+                ]
+            }
+        )
+
+        updated = self.db.get_item(project["id"])
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(updated["category"], "学習")
+        self.assertEqual(updated["category_color"], "#657547")
+
 
 if __name__ == "__main__":
     unittest.main()
