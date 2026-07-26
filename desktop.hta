@@ -88,6 +88,9 @@
     .detail textarea, .detail input, .detail select { width: 100%; border: 1px solid #dedcd3; background: #faf9f5; padding: 9px; margin: 3px 0 9px; outline: none; }
     .detail textarea { height: 126px; resize: vertical; line-height: 1.5; }
     .label { display: block; color: #6e7773; font-size: 11px; font-weight: 600; margin-top: 6px; }
+    .save-state { min-height: 18px; margin: -4px 0 7px; color: #6e7773; font-size: 10px; }
+    .save-state.saving { color: #8a6815; }
+    .save-state.error { color: #a84628; }
     .action-row { margin-top: 12px; }
     .action { border: 0; color: #fff; background: #3c7160; padding: 8px 11px; margin: 0 5px 6px 0; cursor: pointer; font-size: 12px; }
     .action.orange { background: #d4673d; }
@@ -103,6 +106,18 @@
     .project-child { min-height: 58px; margin-left: 24px; border-left: 1px solid #dedcd3; }
     .project-child .row-main { padding-top: 7px; padding-bottom: 6px; }
     .project-child .c-title { font-weight: 600; }
+    .modal-backdrop { display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 30; background: rgba(23,33,29,.58); }
+    .modal-backdrop.visible { display: block; }
+    .confirm-dialog { width: 470px; margin: 16vh auto 0; padding: 26px 28px 24px; background: #fff; border: 1px solid #d7d3c8; box-shadow: 0 14px 38px rgba(0,0,0,.28); }
+    .confirm-dialog h2 { margin: 0 0 13px; color: #1e2925; font-size: 20px; }
+    .confirm-dialog p { margin: 0 0 12px; color: #49534f; font-size: 13px; line-height: 1.75; }
+    .confirm-note { padding: 10px 12px; background: #f3f0e8; color: #5f6864; font-size: 12px; line-height: 1.65; }
+    .confirm-actions { margin-top: 22px; text-align: right; }
+    .confirm-actions button { min-width: 92px; border: 0; padding: 9px 18px; cursor: pointer; font-weight: 600; }
+    .confirm-cancel { margin-right: 8px; background: #e6e3da; color: #39443f; }
+    .confirm-execute { background: #d4673d; color: #fff; }
+    .confirm-cancel:hover { background: #d8d4c9; }
+    .confirm-execute:hover { background: #a84628; }
   </style>
 </head>
 <body>
@@ -111,13 +126,15 @@
       <div class="brand">ACTIVITY<br />COMPASS</div>
       <button class="nav active" id="nav-projects" onclick="changeView('projects')">プロジェクト <span class="nav-count" id="count-projects"></span></button>
       <button class="nav" id="nav-today" onclick="changeView('today')">今日 <span class="nav-count" id="count-today"></span></button>
+      <button class="nav" id="nav-in_progress" onclick="changeView('in_progress')">進行中 <span class="nav-count" id="count-in_progress"></span></button>
       <button class="nav" id="nav-next" onclick="changeView('next')">次にやる <span class="nav-count" id="count-next"></span></button>
       <button class="nav" id="nav-waiting" onclick="changeView('waiting')">待ち <span class="nav-count" id="count-waiting"></span></button>
       <button class="nav" id="nav-someday" onclick="changeView('someday')">いつか <span class="nav-count" id="count-someday"></span></button>
+      <button class="nav" id="nav-done" onclick="changeView('done')">完了 <span class="nav-count" id="count-done"></span></button>
       <button class="nav" id="nav-review" onclick="changeView('review')">確認待ち <span class="nav-count" id="count-review"></span></button>
       <button class="nav" id="nav-history" onclick="changeView('history')">更新履歴</button>
       <button class="nav" id="nav-all" onclick="changeView('all')">すべて</button>
-      <button class="nav" onclick="exportData()">データを書き出す</button>
+      <button class="nav" onclick="showExportConfirmation()">データを書き出す</button>
       <button class="nav exit" onclick="exitApplication()">終了</button>
       <div class="motto">会話で決まったことを<br />頭の外へ。</div>
     </aside>
@@ -155,13 +172,24 @@
     </main>
   </div>
   <div class="toast" id="toast"><small>そろそろです</small><strong id="toastText"></strong></div>
+  <div class="modal-backdrop" id="exportConfirmation" role="dialog" aria-modal="true" aria-labelledby="exportConfirmationTitle">
+    <div class="confirm-dialog">
+      <h2 id="exportConfirmationTitle">データを書き出しますか？</h2>
+      <p>Activity Compassに保存されているタスク、予定、プロジェクト、更新履歴などを、1つのJSONファイルとしてPCに保存します。</p>
+      <div class="confirm-note">バックアップや、ほかのツールへデータを移すときに使用できます。現在のデータが変更・削除されることはありません。保存先は「ドキュメント」内の「Activity Compass Exports」フォルダーです。</div>
+      <div class="confirm-actions">
+        <button class="confirm-cancel" type="button" onclick="cancelExport()">中止</button>
+        <button class="confirm-execute" id="executeExportButton" type="button" onclick="executeExport()">実行</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     var API = "http://127.0.0.1:8765";
     var view = "projects";
     var rows = [];
     var selectedIndex = -1;
-    var labels = {today:"今日", next:"次にやる", waiting:"待ち", someday:"いつか", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
+    var labels = {today:"今日", in_progress:"進行中", next:"次にやる", waiting:"待ち", someday:"いつか", done:"完了", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
     var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
     var statusLabels = {inbox:"未整理", today:"今日", next:"次に", in_progress:"進行中", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
     var allRows = [];
@@ -173,6 +201,13 @@
     var activeQuery = "";
     var lastChangeToken = 0;
     var changePollInFlight = false;
+    var detailSaveTimer = null;
+    var detailSaveInFlight = false;
+    var detailSaveQueue = null;
+    var detailSavedValues = {};
+    var detailAutoSaveItemId = null;
+    var localSaveQuietUntil = 0;
+    var manualSaveAfterAuto = false;
 
     function escapeHtml(value) {
       return String(value === null || value === undefined ? "" : value)
@@ -213,6 +248,7 @@
     }
 
     function changeView(next) {
+      flushDetailAutoSave();
       view = next;
       activeQuery = "";
       selectedIndex = -1;
@@ -257,7 +293,7 @@
     }
 
     function updateCounts(counts) {
-      var keys = ["today","next","waiting","someday","projects","review"];
+      var keys = ["today","in_progress","next","waiting","someday","done","projects","review"];
       for (var i=0; i<keys.length; i++) {
         document.getElementById("count-" + keys[i]).innerText = counts[keys[i]] || "";
       }
@@ -386,6 +422,7 @@
     }
 
     function selectRow(index) {
+      flushDetailAutoSave();
       selectedIndex = index;
       var existing = document.querySelectorAll(".row");
       for (var i=0; i<existing.length; i++) existing[i].className = existing[i].className.replace(/\sselected\b/g, "");
@@ -422,7 +459,8 @@
           '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />' +
           '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
           '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" value="' + escapeHtml(row.priority || 2) + '" />' +
-          '<label class="label">詳細</label><textarea id="editDetails">' + escapeHtml(row.details || "") + '</textarea>' +
+          '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
+          '<div class="save-state" id="detailSaveState">自動保存: 保存済み</div>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
           '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
           '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
@@ -430,6 +468,12 @@
           '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button></div>';
       }
       document.getElementById("detail").innerHTML = html;
+      if (view !== "history" && view !== "review") {
+        detailAutoSaveItemId = row.id;
+        detailSavedValues[row.id] = row.details || "";
+      } else {
+        detailAutoSaveItemId = null;
+      }
     }
 
     function options(values, selected) {
@@ -491,6 +535,7 @@
     }
 
     function manualRefresh() {
+      flushDetailAutoSave();
       refreshData(true);
     }
 
@@ -502,13 +547,124 @@
         if (err || typeof data.token === "undefined") return;
         if (data.token !== lastChangeToken) {
           lastChangeToken = data.token;
+          if (
+            detailSaveTimer ||
+            detailSaveInFlight ||
+            detailSaveQueue ||
+            new Date().getTime() < localSaveQuietUntil
+          ) return;
           refreshData(false);
         }
       });
     }
 
+    function setDetailSaveState(text, stateClass, itemId) {
+      if (itemId && itemId !== detailAutoSaveItemId) return;
+      var node = document.getElementById("detailSaveState");
+      if (!node) return;
+      node.className = "save-state" + (stateClass ? " " + stateClass : "");
+      node.innerText = text;
+    }
+
+    function scheduleDetailAutoSave() {
+      if (!detailAutoSaveItemId) return;
+      if (detailSaveTimer) clearTimeout(detailSaveTimer);
+      setDetailSaveState("自動保存中…", "saving", detailAutoSaveItemId);
+      detailSaveTimer = setTimeout(function() {
+        detailSaveTimer = null;
+        queueCurrentDetailSave();
+      }, 120);
+    }
+
+    function flushDetailAutoSave() {
+      if (!detailSaveTimer) return;
+      clearTimeout(detailSaveTimer);
+      detailSaveTimer = null;
+      queueCurrentDetailSave();
+    }
+
+    function queueCurrentDetailSave() {
+      var input = document.getElementById("editDetails");
+      if (!input || !detailAutoSaveItemId) return;
+      var value = input.value;
+      if (detailSavedValues[detailAutoSaveItemId] === value) {
+        setDetailSaveState("自動保存: 保存済み", "", detailAutoSaveItemId);
+        return;
+      }
+      detailSaveQueue = {itemId:detailAutoSaveItemId, details:value};
+      processDetailSaveQueue();
+    }
+
+    function updateCachedDetails(itemId, details) {
+      var collections = [rows, allRows, projectChildRows, projectCatalog];
+      for (var collectionIndex=0; collectionIndex<collections.length; collectionIndex++) {
+        for (var itemIndex=0; itemIndex<collections[collectionIndex].length; itemIndex++) {
+          if (collections[collectionIndex][itemIndex].id === itemId) {
+            collections[collectionIndex][itemIndex].details = details;
+          }
+        }
+      }
+    }
+
+    function syncChangeToken() {
+      request("GET", "/v1/changes", null, function(err, data) {
+        if (!err && typeof data.token !== "undefined") lastChangeToken = data.token;
+      });
+    }
+
+    function processDetailSaveQueue() {
+      if (detailSaveInFlight || !detailSaveQueue) return;
+      var pending = detailSaveQueue;
+      detailSaveQueue = null;
+      if (detailSavedValues[pending.itemId] === pending.details) {
+        processDetailSaveQueue();
+        return;
+      }
+      detailSaveInFlight = true;
+      localSaveQuietUntil = new Date().getTime() + 2000;
+      request(
+        "POST",
+        "/v1/items/" + encodeURIComponent(pending.itemId),
+        {details:pending.details},
+        function(err) {
+          detailSaveInFlight = false;
+          if (err) {
+            setDetailSaveState("自動保存に失敗しました。保存ボタンを押してください。", "error", pending.itemId);
+          } else {
+            detailSavedValues[pending.itemId] = pending.details;
+            updateCachedDetails(pending.itemId, pending.details);
+            localSaveQuietUntil = new Date().getTime() + 2000;
+            syncChangeToken();
+            if (
+              pending.itemId === detailAutoSaveItemId &&
+              (!detailSaveQueue || detailSaveQueue.itemId !== pending.itemId)
+            ) {
+              setDetailSaveState("自動保存: 保存済み", "", pending.itemId);
+            }
+          }
+          if (manualSaveAfterAuto) {
+            manualSaveAfterAuto = false;
+            detailSaveQueue = null;
+            saveItem();
+            return;
+          }
+          processDetailSaveQueue();
+        }
+      );
+    }
+
     function saveItem() {
       if (selectedIndex < 0) return;
+      if (detailSaveTimer) {
+        clearTimeout(detailSaveTimer);
+        detailSaveTimer = null;
+      }
+      if (detailSaveInFlight) {
+        detailSaveQueue = null;
+        manualSaveAfterAuto = true;
+        setDetailSaveState("保存中…", "saving", detailAutoSaveItemId);
+        return;
+      }
       var row = rows[selectedIndex];
       var payload = {
         title: document.getElementById("editTitle").value,
@@ -528,7 +684,13 @@
         payload.project_id = document.getElementById("editProject").value || null;
       }
       request("POST", "/v1/items/" + encodeURIComponent(row.id), payload, function(err) {
-        if (err) { alert(err.message); return; }
+        if (err) {
+          setDetailSaveState("保存に失敗しました。もう一度お試しください。", "error", row.id);
+          alert(err.message);
+          return;
+        }
+        detailSavedValues[row.id] = payload.details;
+        localSaveQuietUntil = new Date().getTime() + 2000;
         loadProjectCatalog();
         loadRows();
       });
@@ -551,7 +713,17 @@
       });
     }
 
-    function exportData() {
+    function showExportConfirmation() {
+      document.getElementById("exportConfirmation").className = "modal-backdrop visible";
+      document.getElementById("executeExportButton").focus();
+    }
+
+    function cancelExport() {
+      document.getElementById("exportConfirmation").className = "modal-backdrop";
+    }
+
+    function executeExport() {
+      cancelExport();
       request("POST", "/v1/export", {}, function(err, data) {
         if (err) { alert(err.message); return; }
         alert("書き出しました。\n" + data.path);

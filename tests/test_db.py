@@ -79,7 +79,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.db.apply_automatic_rules(), 1)
         self.assertEqual(self.db.get_item(item["id"])["status"], "today")
 
-    def test_in_progress_is_a_valid_status_and_appears_in_next_view(self) -> None:
+    def test_in_progress_has_its_own_view(self) -> None:
         item = self.db.create_item(
             {
                 "title": "進行中の作業",
@@ -89,7 +89,32 @@ class DatabaseTests(unittest.TestCase):
         )
 
         self.assertEqual(item["status"], "in_progress")
-        self.assertEqual([row["id"] for row in self.db.list_items("next")], [item["id"]])
+        self.assertEqual(
+            [row["id"] for row in self.db.list_items("in_progress")], [item["id"]]
+        )
+        self.assertEqual(self.db.list_items("next"), [])
+
+    def test_done_view_excludes_cancelled_items(self) -> None:
+        done = self.db.create_item(
+            {"title": "完了した作業", "entity_type": "task", "status": "done"}
+        )
+        self.db.create_item(
+            {"title": "取り消した作業", "entity_type": "task", "status": "cancelled"}
+        )
+
+        self.assertEqual([row["id"] for row in self.db.list_items("done")], [done["id"]])
+
+    def test_counts_include_in_progress_and_done(self) -> None:
+        self.db.create_item(
+            {"title": "進行中の作業", "entity_type": "task", "status": "in_progress"}
+        )
+        self.db.create_item(
+            {"title": "完了した作業", "entity_type": "task", "status": "done"}
+        )
+
+        counts = self.db.counts()
+        self.assertEqual(counts["in_progress"], 1)
+        self.assertEqual(counts["done"], 1)
 
     def test_sync_updates_existing_project_when_event_type_is_task(self) -> None:
         project = self.db.create_item(

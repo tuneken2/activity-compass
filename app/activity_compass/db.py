@@ -721,10 +721,11 @@ class Database:
                 (i.status = 'today' OR date(i.due_at) <= date('now', 'localtime')
                  OR date(i.scheduled_at) <= date('now', 'localtime'))
             """,
-            "next": "i.status IN ('inbox', 'next', 'in_progress')",
+            "in_progress": "i.status = 'in_progress'",
+            "next": "i.status IN ('inbox', 'next')",
             "waiting": "i.status = 'waiting'",
             "someday": "i.status = 'someday'",
-            "done": "i.status IN ('done', 'cancelled')",
+            "done": "i.status = 'done'",
             "projects": "i.entity_type = 'project' AND i.status NOT IN ('done', 'cancelled')",
             "project_tasks": "i.entity_type != 'project' AND i.project_id IS NOT NULL",
             "all": "1 = 1",
@@ -816,9 +817,11 @@ class Database:
     def counts(self) -> dict[str, int]:
         return {
             "today": len(self.list_items("today")),
+            "in_progress": len(self.list_items("in_progress")),
             "next": len(self.list_items("next")),
             "waiting": len(self.list_items("waiting")),
             "someday": len(self.list_items("someday")),
+            "done": len(self.list_items("done")),
             "review": len(self.list_reviews()),
             "projects": len(self.list_items("projects")),
         }

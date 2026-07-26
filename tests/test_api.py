@@ -79,6 +79,27 @@ class ApiEncodingTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertGreater(after["token"], before["token"])
 
+    def test_partial_update_auto_saves_details_without_changing_other_fields(self) -> None:
+        _, created = self.post_json(
+            "/v1/items",
+            {
+                "entity_type": "project",
+                "title": "自動保存対象",
+                "status": "in_progress",
+                "details": "変更前",
+            },
+        )
+
+        status, updated = self.post_json(
+            f"/v1/items/{created['id']}",
+            {"details": "入力直後に保存"},
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["details"], "入力直後に保存")
+        self.assertEqual(updated["title"], "自動保存対象")
+        self.assertEqual(updated["status"], "in_progress")
+
     def test_get_responses_disable_caching(self) -> None:
         status, _, headers = self.get_json("/v1/items?view=all")
 

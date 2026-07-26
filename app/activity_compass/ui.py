@@ -27,9 +27,11 @@ COLORS = {
 
 LABELS = {
     "today": "今日",
+    "in_progress": "進行中",
     "next": "次にやる",
     "waiting": "待ち",
     "someday": "いつか",
+    "done": "完了",
     "projects": "プロジェクト",
     "review": "確認待ち",
     "history": "更新履歴",
@@ -159,7 +161,18 @@ class ActivityCompassApp(tk.Tk):
         ).pack(anchor="w", padx=24, pady=(28, 36))
 
         self.nav_buttons: dict[str, tk.Button] = {}
-        for key in ("projects", "today", "next", "waiting", "someday", "review", "history", "all"):
+        for key in (
+            "projects",
+            "today",
+            "in_progress",
+            "next",
+            "waiting",
+            "someday",
+            "done",
+            "review",
+            "history",
+            "all",
+        ):
             button = tk.Button(
                 sidebar,
                 text=LABELS[key],
@@ -886,6 +899,63 @@ class ActivityCompassApp(tk.Tk):
             messagebox.showerror("Activity Compass", str(exc))
 
     def export_data(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("データを書き出しますか？")
+        dialog.configure(bg=COLORS["panel"])
+        dialog.transient(self)
+        dialog.resizable(False, False)
+
+        should_export = {"value": False}
+
+        def close(execute: bool = False) -> None:
+            should_export["value"] = execute
+            dialog.destroy()
+
+        tk.Label(
+            dialog,
+            text="データを書き出しますか？",
+            bg=COLORS["panel"],
+            fg=COLORS["text"],
+            font=("Segoe UI Semibold", 14),
+        ).pack(anchor="w", padx=24, pady=(22, 10))
+        tk.Label(
+            dialog,
+            text=(
+                "保存されているタスク、予定、プロジェクト、更新履歴などを、\n"
+                "1つのJSONファイルとしてPCに保存します。\n\n"
+                "バックアップや、ほかのツールへデータを移すときに使用できます。\n"
+                "現在のデータが変更・削除されることはありません。"
+            ),
+            bg=COLORS["panel"],
+            fg=COLORS["muted"],
+            justify="left",
+            font=("Segoe UI", 10),
+        ).pack(anchor="w", padx=24)
+        actions = tk.Frame(dialog, bg=COLORS["panel"])
+        actions.pack(anchor="e", padx=24, pady=22)
+        tk.Button(
+            actions,
+            text="中止",
+            command=close,
+            relief="flat",
+            padx=20,
+            pady=8,
+        ).pack(side="left", padx=(0, 8))
+        tk.Button(
+            actions,
+            text="実行",
+            command=lambda: close(True),
+            bg=COLORS["accent"],
+            fg="white",
+            relief="flat",
+            padx=20,
+            pady=8,
+        ).pack(side="left")
+        dialog.protocol("WM_DELETE_WINDOW", close)
+        dialog.grab_set()
+        self.wait_window(dialog)
+        if not should_export["value"]:
+            return
         default_name = f"activity-compass-{datetime.now():%Y-%m-%d}.json"
         path = filedialog.asksaveasfilename(
             title="Activity Compassのデータを書き出す",
