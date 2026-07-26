@@ -79,6 +79,70 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.db.apply_automatic_rules(), 1)
         self.assertEqual(self.db.get_item(item["id"])["status"], "today")
 
+    def test_in_progress_is_a_valid_status_and_appears_in_next_view(self) -> None:
+        item = self.db.create_item(
+            {
+                "title": "進行中の作業",
+                "entity_type": "task",
+                "status": "in_progress",
+            }
+        )
+
+        self.assertEqual(item["status"], "in_progress")
+        self.assertEqual([row["id"] for row in self.db.list_items("next")], [item["id"]])
+
+    def test_sync_updates_existing_project_when_event_type_is_task(self) -> None:
+        project = self.db.create_item(
+            {
+                "title": "Activity Compass",
+                "entity_type": "project",
+                "details": "初期メモ",
+            }
+        )
+
+        result = self.db.sync(
+            {
+                "events": [
+                    {
+                        "action": "update",
+                        "entity_type": "task",
+                        "title": "Activity Compass",
+                        "status": "in_progress",
+                        "confidence": 0.99,
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(len(self.db.list_items()), 1)
+        updated = self.db.get_item(project["id"])
+        self.assertEqual(updated["entity_type"], "project")
+        self.assertEqual(updated["status"], "in_progress")
+
+    def test_sync_matches_safe_project_suffix_variation(self) -> None:
+        project = self.db.create_item(
+            {"title": "Activity Compass", "entity_type": "project"}
+        )
+
+        result = self.db.sync(
+            {
+                "events": [
+                    {
+                        "action": "update",
+                        "entity_type": "project",
+                        "title": "Activity Compass プロジェクト",
+                        "details": "既存案件の更新",
+                        "confidence": 0.99,
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(len(self.db.list_items()), 1)
+        self.assertEqual(self.db.get_item(project["id"])["details"], "既存案件の更新")
+
     def test_task_priority_uses_project_deadline_and_effort(self) -> None:
         project = self.db.create_item(
             {"title": "優先プロジェクト", "entity_type": "project", "priority": 2}
@@ -203,6 +267,48 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(project["category_color"], "#527792")
         self.assertEqual(task["project_category"], "仕事")
         self.assertEqual(task["project_category_color"], "#527792")
+        self.assertEqual(task["project_image_color"], project["project_color"])
+
+    def test_projects_receive_distinct_image_colors_automatically(self) -> None:
+        first = self.db.create_item(
+            {"title": "赤い企画", "entity_type": "project"}
+        )
+        second = self.db.create_item(
+            {"title": "青い企画", "entity_type": "project"}
+        )
+
+        self.assertRegex(first["project_color"], r"^#[0-9A-F]{6}$")
+        self.assertRegex(second["project_color"], r"^#[0-9A-F]{6}$")
+        self.assertNotEqual(first["project_color"], second["project_color"])
+
+    def test_existing_projects_are_backfilled_with_distinct_colors(self) -> None:
+        first = self.db.create_item(
+            {"title": "既存企画A", "entity_type": "project"}
+        )
+        second = self.db.create_item(
+            {"title": "既存企画B", "entity_type": "project"}
+        )
+        with self.db.connect() as connection:
+            connection.execute(
+                "UPDATE items SET project_color = NULL WHERE entity_type = 'project'"
+            )
+
+        migrated = Database(self.db.path)
+
+        first_color = migrated.get_item(first["id"])["project_color"]
+        second_color = migrated.get_item(second["id"])["project_color"]
+        self.assertTrue(first_color)
+        self.assertTrue(second_color)
+        self.assertNotEqual(first_color, second_color)
+
+    def test_item_converted_to_project_receives_an_image_color(self) -> None:
+        item = self.db.create_item(
+            {"title": "企画へ変更", "entity_type": "task"}
+        )
+
+        updated = self.db.update_item(item["id"], {"entity_type": "project"})
+
+        self.assertRegex(updated["project_color"], r"^#[0-9A-F]{6}$")
 
     def test_same_category_reuses_and_updates_its_color(self) -> None:
         first = self.db.create_item(

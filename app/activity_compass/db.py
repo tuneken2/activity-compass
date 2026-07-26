@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import colorsys
 import json
 import os
 import re
@@ -14,7 +15,21 @@ from typing import Any, Iterator
 
 DESTRUCTIVE_ACTIONS = {"complete", "cancel", "defer"}
 VALID_TYPES = {"task", "schedule", "idea", "waiting", "decision", "project"}
-VALID_STATUSES = {"inbox", "today", "next", "waiting", "someday", "done", "cancelled"}
+VALID_STATUSES = {
+    "inbox",
+    "today",
+    "next",
+    "in_progress",
+    "waiting",
+    "someday",
+    "done",
+    "cancelled",
+}
+MATCHABLE_TYPES = {"task", "project"}
+ITEM_KIND_SUFFIX_PATTERN = re.compile(
+    r"(?:プロジェクト|project|タスク|task)$",
+    re.IGNORECASE,
+)
 CORRUPTED_TEXT_PATTERN = re.compile(r"\?{3,}|\ufffd")
 EFFORT_EASY_PATTERN = re.compile(r"短時間|軽微|簡単|すぐ|小規模|quick|easy", re.IGNORECASE)
 EFFORT_HARD_PATTERN = re.compile(
@@ -34,6 +49,24 @@ CATEGORY_COLORS = (
     "#8A5F73",
     "#657547",
 )
+PROJECT_COLORS = (
+    "#2F6B5F",
+    "#4B6FA8",
+    "#9A6A1F",
+    "#74518A",
+    "#A6533D",
+    "#2F7782",
+    "#8A4F68",
+    "#5D713A",
+    "#5B5FA6",
+    "#A05A2C",
+    "#3B7A57",
+    "#7A5C45",
+    "#446B8C",
+    "#80608F",
+    "#8B6B20",
+    "#4A7570",
+)
 
 
 def utc_now() -> str:
@@ -50,6 +83,13 @@ def default_db_path() -> Path:
 
 def normalize_title(value: str) -> str:
     return re.sub(r"\s+", "", value).casefold()
+
+
+def normalize_identity_title(value: str) -> str:
+    """Normalize harmless title variations used when matching tasks and projects."""
+    normalized = re.sub(r"[\W_]+", "", value, flags=re.UNICODE).casefold()
+    without_kind = ITEM_KIND_SUFFIX_PATTERN.sub("", normalized)
+    return without_kind if len(without_kind) >= 3 else normalized
 
 
 def validate_text_integrity(value: Any) -> None:
@@ -162,6 +202,7 @@ class Database:
             self._ensure_column(db, "items", "category", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(db, "items", "category_color", "TEXT")
             self._ensure_column(db, "items", "project_rank", "INTEGER")
+            self._ensure_column(db, "items", "project_color", "TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)"
             )
@@ -171,6 +212,7 @@ class Database:
             )
             self._backfill_project_links(db)
             self._backfill_priorities(db)
+            self._backfill_project_colors(db)
             priorities = db.execute(
                 "SELECT DISTINCT priority FROM items WHERE entity_type = 'project'"
             ).fetchall()
@@ -208,6 +250,51 @@ class Database:
             return existing["category_color"]
         index = zlib.crc32(category.encode("utf-8")) % len(CATEGORY_COLORS)
         return CATEGORY_COLORS[index]
+
+    def _next_project_color(
+        self,
+        db: sqlite3.Connection,
+        *,
+        exclude_id: str | None = None,
+    ) -> str:
+        query = """
+            SELECT project_color FROM items
+            WHERE entity_type = 'project' AND project_color IS NOT NULL
+        """
+        params: tuple[Any, ...] = ()
+        if exclude_id:
+            query += " AND id != ?"
+            params = (exclude_id,)
+        used = {
+            str(row["project_color"]).upper()
+            for row in db.execute(query, params)
+            if row["project_color"]
+        }
+        for color in PROJECT_COLORS:
+            if color not in used:
+                return color
+        for index in range(len(used), len(used) + 720):
+            hue = ((index * 137.508) % 360) / 360
+            red, green, blue = colorsys.hsv_to_rgb(hue, 0.58, 0.62)
+            color = f"#{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}"
+            if color not in used:
+                return color
+        raise RuntimeError("could not allocate a unique project color")
+
+    def _backfill_project_colors(self, db: sqlite3.Connection) -> None:
+        rows = db.execute(
+            """
+            SELECT id FROM items
+            WHERE entity_type = 'project'
+              AND (project_color IS NULL OR project_color = '')
+            ORDER BY created_at, id
+            """
+        ).fetchall()
+        for row in rows:
+            db.execute(
+                "UPDATE items SET project_color = ? WHERE id = ?",
+                (self._next_project_color(db, exclude_id=row["id"]), row["id"]),
+            )
 
     @staticmethod
     def _ensure_column(
@@ -546,6 +633,9 @@ class Database:
             category_color = self._category_color(
                 db, category, payload.get("category_color")
             )
+            project_color = (
+                self._next_project_color(db) if entity_type == "project" else None
+            )
             project_id = (
                 None
                 if entity_type == "project"
@@ -583,8 +673,8 @@ class Database:
                     id, entity_type, title, normalized_title, details, status,
                     due_at, scheduled_at, priority, confidence, created_at, updated_at,
                     project_id, parent_project_id, effort, base_priority, priority_reason,
-                    category, category_color, project_rank
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, category_color, project_rank, project_color
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_id,
@@ -607,6 +697,7 @@ class Database:
                     category,
                     category_color,
                     None,
+                    project_color,
                 ),
             )
             if entity_type == "project":
@@ -630,7 +721,7 @@ class Database:
                 (i.status = 'today' OR date(i.due_at) <= date('now', 'localtime')
                  OR date(i.scheduled_at) <= date('now', 'localtime'))
             """,
-            "next": "i.status IN ('inbox', 'next')",
+            "next": "i.status IN ('inbox', 'next', 'in_progress')",
             "waiting": "i.status = 'waiting'",
             "someday": "i.status = 'someday'",
             "done": "i.status IN ('done', 'cancelled')",
@@ -647,6 +738,7 @@ class Database:
                 SELECT i.*, p.title AS project_title,
                        p.category AS project_category,
                        p.category_color AS project_category_color,
+                       p.project_color AS project_image_color,
                        parent.title AS parent_project_title
                 FROM items i
                 LEFT JOIN items p ON p.id = i.project_id
@@ -657,8 +749,9 @@ class Database:
                   i.priority DESC,
                   CASE WHEN i.project_rank IS NULL THEN 1 ELSE 0 END,
                   i.project_rank,
-                  CASE i.status WHEN 'today' THEN 0 WHEN 'next' THEN 1
-                    WHEN 'inbox' THEN 2 WHEN 'waiting' THEN 3 ELSE 4 END,
+                  CASE i.status WHEN 'today' THEN 0 WHEN 'in_progress' THEN 1
+                    WHEN 'next' THEN 2 WHEN 'inbox' THEN 3
+                    WHEN 'waiting' THEN 4 ELSE 5 END,
                   CASE WHEN i.due_at IS NULL THEN 1 ELSE 0 END,
                   i.due_at, i.updated_at DESC
                 """
@@ -695,7 +788,8 @@ class Database:
                 f"""
                 SELECT i.*, p.title AS project_title,
                        p.category AS project_category,
-                       p.category_color AS project_category_color
+                       p.category_color AS project_category_color,
+                       p.project_color AS project_image_color
                 FROM items i
                 LEFT JOIN items p ON p.id = i.project_id
                 WHERE {where.replace("title", "i.title").replace("details", "i.details")}
@@ -779,15 +873,47 @@ class Database:
             title = str(event.get("title", "")).strip()
             if not title:
                 return None
+            entity_type = event.get("entity_type", "task")
             row = db.execute(
                 """
                 SELECT * FROM items
                 WHERE entity_type = ? AND normalized_title = ?
                 ORDER BY updated_at DESC LIMIT 1
                 """,
-                (event.get("entity_type", "task"), normalize_title(title)),
+                (entity_type, normalize_title(title)),
             ).fetchone()
-            return dict(row) if row else None
+            if row:
+                return dict(row)
+
+            if entity_type not in MATCHABLE_TYPES:
+                return None
+
+            exact_candidates = db.execute(
+                """
+                SELECT * FROM items
+                WHERE entity_type IN ('task', 'project')
+                  AND normalized_title = ?
+                ORDER BY updated_at DESC
+                """,
+                (normalize_title(title),),
+            ).fetchall()
+            if len(exact_candidates) == 1:
+                return dict(exact_candidates[0])
+
+            identity_title = normalize_identity_title(title)
+            candidates = [
+                dict(candidate)
+                for candidate in db.execute(
+                    """
+                    SELECT * FROM items
+                    WHERE entity_type = ?
+                    ORDER BY updated_at DESC
+                    """,
+                    (entity_type,),
+                ).fetchall()
+                if normalize_identity_title(candidate["title"]) == identity_title
+            ]
+            return candidates[0] if len(candidates) == 1 else None
 
     def _apply_event(self, batch_id: str, event: dict[str, Any], force: bool = False) -> str:
         action = event.get("action", "create")
@@ -1052,6 +1178,10 @@ class Database:
             resulting_type = updates.get("entity_type", current["entity_type"])
             old_priority = int(current["priority"] or 0)
             if resulting_type == "project":
+                if not current["project_color"]:
+                    updates["project_color"] = self._next_project_color(
+                        db, exclude_id=item_id
+                    )
                 category = self._normalize_category(
                     updates.get("category", current["category"])
                 )
@@ -1071,6 +1201,7 @@ class Database:
             else:
                 updates["category"] = ""
                 updates["category_color"] = None
+                updates["project_color"] = None
             if updates.get("project_id"):
                 project = db.execute(
                     "SELECT id FROM items WHERE id = ? AND entity_type = 'project'",

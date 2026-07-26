@@ -110,7 +110,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                                         details = [ordered]@{ type = "string" }
                                         status = [ordered]@{
                                             type = "string"
-                                            enum = @("inbox", "today", "next", "waiting", "someday", "done", "cancelled")
+                                            enum = @("inbox", "today", "next", "in_progress", "waiting", "someday", "done", "cancelled")
                                         }
                                         due_at = [ordered]@{ type = "string" }
                                         scheduled_at = [ordered]@{ type = "string" }

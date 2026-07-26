@@ -18,6 +18,7 @@ description: Extract activity changes from the current conversation and send the
 
 各イベントに `action`, `entity_type`, `title`, `confidence` を必ず付ける。分かる場合だけ `details`, `due_at`, `scheduled_at`, `status`, `project_id`, `project_title`, `parent_project_id`, `project_rank`, `category`, `category_color`, `effort`, `target_id`, `source_excerpt` を付ける。
 
+- 着手済みで完了していない活動には `status: "in_progress"` を付ける。
 - タスク等の所属プロジェクトが会話から分かる場合は、検索でIDを確認できれば `project_id`、確認できなければ `project_title` を付ける。
 - プロジェクト自体に親プロジェクトがある場合は `parent_project_id` を付ける。
 - プロジェクトのカテゴリーが明示されている場合は `category` を付ける。色も明示されている場合だけ `category_color` を `#RRGGBB` 形式で付ける。同名カテゴリーの既存色はアプリが再利用する。
@@ -40,7 +41,7 @@ description: Extract activity changes from the current conversation and send the
 
 1. 発動依頼そのものを除き、現在の会話で確定・変更された活動を列挙する。
 2. 同じ対象への複数言及を最新状態へまとめる。
-3. 更新らしい対象がある場合だけ `search_activities` で短い固有語を検索する。該当項目が明確なら `target_id` を付ける。
+3. プロジェクトまたはタスクを抽出したら、`search_activities` で短い固有語を検索する。既存項目と判断できる場合は新規作成せず、実際の種類を維持して `action: "update"` と `target_id` を付ける。完全一致しない場合でも表記差（「プロジェクト」「タスク」の有無など）を考慮し、候補が一意でない場合は推測で更新しない。
 4. タイトルは抽象語ではなく、次の行動または識別可能な案件名にする。
 5. 日付は会話の基準日とタイムゾーンを使ってISO 8601へ正規化する。推測した日付は確信度を下げる。
 6. 完了、取消、延期、期限・予定日時の変更は、明示されていなければ `confidence` を0.89以下にする。アプリ側が確認待ちにする。

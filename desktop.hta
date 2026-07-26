@@ -53,20 +53,21 @@
     .row { position: relative; min-height: 66px; border-bottom: 1px solid #ebe9e2; cursor: pointer; background: #fff; }
     .row:nth-child(even) { background: #fafaf7; }
     .row:hover { background: #f7f2ed; }
-    .row.selected { background: #f3e4dc; }
-    .row-accent { width: 4px; -ms-flex: 0 0 4px; flex: 0 0 4px; background: #3c7160; }
+    .row.selected { background: #f3e4dc; box-shadow: inset 0 0 0 1px #d9a28d; }
+    .row-accent { width: 6px; -ms-flex: 0 0 6px; flex: 0 0 6px; background: #3c7160; }
     .row-main { -ms-flex: 1; flex: 1; min-width: 0; padding: 10px 12px 8px 14px; }
     .c-title { font-size: 14px; line-height: 20px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .c-meta { height: 22px; color: #77807c; font-size: 11px; line-height: 22px; white-space: nowrap; overflow: hidden; }
     .type-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; background: #e8f0ec; color: #315e4f; font-weight: 600; }
-    .category-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; color: #fff; font-weight: 600; }
+    .category-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 9px; border-radius: 10px; color: #fff; font-weight: 700; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+    .project-toggle { display: inline-block; width: 20px; font-size: 11px; vertical-align: 1px; }
+    .project-swatch { display: inline-block; width: 10px; height: 10px; margin: 0 8px 0 1px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d8d6cf; }
     .status-text { margin-right: 9px; }
     .c-priority { width: 76px; -ms-flex: 0 0 76px; flex: 0 0 76px; padding-top: 20px; text-align: center; color: #d4673d; font-size: 11px; font-weight: 700; }
     .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
     .date-main { display: block; color: #26322d; font-size: 13px; font-weight: 600; line-height: 20px; }
     .date-context { display: block; color: #858c88; font-size: 10px; line-height: 17px; }
     .overdue .date-main { color: #a84628; }
-    .row.selected .row-accent { background: #d4673d !important; }
     .row-type-schedule .row-accent { background: #527792; }
     .row-type-schedule .type-pill { background: #e7eef5; color: #355b78; }
     .row-type-idea .row-accent { background: #9b7b28; }
@@ -96,8 +97,6 @@
     .project-filter { border: 1px solid #c9c7be; background: #fff; color: #315e4f; margin: 0 4px 4px 0; padding: 4px 8px; cursor: pointer; font-size: 11px; }
     .project-filter.hidden { color: #9a9e9b; background: #ecebe6; text-decoration: line-through; }
     .project-sort { float: right; height: 28px; border: 1px solid #c9c7be; background: #fff; color: #26322d; }
-    .project-row .c-title:before { content: "\25B6"; display: inline-block; width: 20px; color: #b15939; }
-    .project-row.expanded .c-title:before { content: "\25BC"; }
     .project-child { min-height: 58px; margin-left: 24px; border-left: 1px solid #dedcd3; }
     .project-child .row-main { padding-top: 7px; padding-bottom: 6px; }
     .project-child .c-title { font-weight: 600; }
@@ -161,7 +160,7 @@
     var selectedIndex = -1;
     var labels = {today:"今日", next:"次にやる", waiting:"待ち", someday:"いつか", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
     var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
-    var statusLabels = {inbox:"未整理", today:"今日", next:"次に", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
+    var statusLabels = {inbox:"未整理", today:"今日", next:"次に", in_progress:"進行中", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
     var categoryColors = [
       {value:"#3C7160", label:"深緑"}, {value:"#527792", label:"青"},
       {value:"#9B7B28", label:"黄土"}, {value:"#7E5D8D", label:"紫"},
@@ -189,6 +188,12 @@
         return {name:row.category || "", color:row.category_color || ""};
       }
       return {name:row.project_category || "", color:row.project_category_color || ""};
+    }
+
+    function rowProjectColor(row) {
+      return row.entity_type === "project"
+        ? (row.project_color || "")
+        : (row.project_image_color || "");
     }
 
     function request(method, path, data, done) {
@@ -324,15 +329,20 @@
         var priority = priorityValue === 3 ? "高" : (priorityValue === 2 ? "中" : (priorityValue === 1 ? "低" : "—"));
         var category = rowCategory(row);
         var categoryBadge = category.name
-          ? '<span class="category-pill" style="background:' + escapeHtml(category.color || "#77736B") + '">' + escapeHtml(category.name) + '</span>'
+          ? '<span class="category-pill" title="カテゴリー" style="background:' + escapeHtml(category.color || "#77736B") + '">' + escapeHtml(category.name) + '</span>'
           : '';
-        var accentStyle = category.color ? ' style="background:' + escapeHtml(category.color) + '"' : '';
+        var projectColor = rowProjectColor(row);
+        var accentStyle = projectColor ? ' style="background:' + escapeHtml(projectColor) + '"' : '';
+        var titlePrefix = isProject
+          ? '<span class="project-toggle" style="color:' + escapeHtml(projectColor || "#B15939") + '">' + (expandedProjects[row.id] ? "▼" : "▶") + '</span>' +
+            '<span class="project-swatch" title="プロジェクトのイメージカラー" style="background:' + escapeHtml(projectColor || "#B15939") + '"></span>'
+          : '';
         if (isProject) status = "子タスク " + childCount + "件 · " + (expandedProjects[row.id] ? "クリックで閉じる" : "クリックで展開");
         var projectClass = isProject ? " project-row" + (expandedProjects[row.id] ? " expanded" : "") : (isProjectOverview ? " project-child" : "");
         var clickAction = isProject ? "toggleProject(" + i + ")" : "selectRow(" + i + ")";
         html += '<div class="row row-type-' + escapeHtml(rowType) + projectClass + (date.overdue ? ' overdue' : '') + '" id="row-' + i + '" onclick="' + clickAction + '">' +
           '<div class="row-accent"' + accentStyle + '></div><div class="row-main">' +
-          '<div class="c-title">' + escapeHtml(title) + '</div>' +
+          '<div class="c-title">' + titlePrefix + escapeHtml(title) + '</div>' +
           '<div class="c-meta"><span class="type-pill">' + escapeHtml(type) + '</span>' +
           categoryBadge +
           '<span class="status-text">' + escapeHtml(status) + '</span>' +
@@ -404,10 +414,11 @@
       } else {
         html += '<label class="label">タイトル</label><input id="editTitle" value="' + escapeHtml(row.title) + '" />' +
           '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project"], row.entity_type) + '</select>' +
-          '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","waiting","someday","done","cancelled"], row.status) + '</select>' +
+          '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","in_progress","waiting","someday","done","cancelled"], row.status) + '</select>' +
           (row.entity_type === "project"
             ? '<label class="label">カテゴリー</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
               '<label class="label">カテゴリー色</label><select id="editCategoryColor">' + categoryColorOptions(row.category_color) + '</select>' +
+              '<label class="label">イメージカラー（自動割り当て）</label><input readonly value="' + escapeHtml(row.project_color || "") + '" style="border-left:12px solid ' + escapeHtml(row.project_color || "#B15939") + '" />' +
               '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" value="' + escapeHtml(row.project_rank || "") + '" />' +
               '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
             : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
@@ -418,6 +429,7 @@
           '<label class="label">詳細</label><textarea id="editDetails">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
           '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
+          '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
           '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
           '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button></div>';
       }

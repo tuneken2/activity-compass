@@ -49,6 +49,7 @@ STATUS_LABELS = {
     "inbox": "未整理",
     "today": "今日",
     "next": "次に",
+    "in_progress": "進行中",
     "waiting": "待ち",
     "someday": "いつか",
     "done": "完了",
@@ -528,11 +529,16 @@ class ActivityCompassApp(tk.Tk):
             if entity_type == "project"
             else row.get("project_category_color")
         )
+        project_color = (
+            row.get("project_color")
+            if entity_type == "project"
+            else row.get("project_image_color")
+        )
         accent_color = badge_fg if not (
             self.current_view in {"review", "history"} and not self.search_query
         ) else COLORS["muted"]
-        if category and category_color:
-            accent_color = category_color
+        if project_color:
+            accent_color = project_color
 
         item = tk.Frame(
             self.list_rows,
@@ -543,7 +549,7 @@ class ActivityCompassApp(tk.Tk):
         )
         item.pack(fill="x")
         item.pack_propagate(False)
-        accent = tk.Frame(item, bg=accent_color, width=4)
+        accent = tk.Frame(item, bg=accent_color, width=6)
         accent.pack(side="left", fill="y")
         accent.pack_propagate(False)
 
@@ -674,7 +680,6 @@ class ActivityCompassApp(tk.Tk):
         if current:
             for widget in current["surfaces"]:
                 widget.configure(bg=COLORS["selected"])
-            current["accent"].configure(bg=COLORS["selected_line"])
         if show_details:
             self.show_detail()
 
@@ -718,6 +723,7 @@ class ActivityCompassApp(tk.Tk):
             self._action_button("編集", lambda: self.open_editor(row), "#3C7160")
             self._action_button("保存", lambda: self.save_details(row["id"]), "#3C7160")
             self._action_button("完了", lambda: self.set_status(row["id"], "done"), COLORS["accent"])
+            self._action_button("進行中", lambda: self.set_status(row["id"], "in_progress"), "#3C7160")
             self._action_button("次に", lambda: self.set_status(row["id"], "next"), "#3C7160")
             self._action_button("待ち", lambda: self.set_status(row["id"], "waiting"), "#77736B")
             self._action_button("いつか", lambda: self.set_status(row["id"], "someday"), "#77736B")
@@ -784,7 +790,16 @@ class ActivityCompassApp(tk.Tk):
         entity_type.pack(side="left", fill="x", expand=True, padx=(0, 5))
         status = ttk.Combobox(
             pair,
-            values=("inbox", "today", "next", "waiting", "someday", "done", "cancelled"),
+            values=(
+                "inbox",
+                "today",
+                "next",
+                "in_progress",
+                "waiting",
+                "someday",
+                "done",
+                "cancelled",
+            ),
             state="readonly",
         )
         status.set(item.get("status", "inbox"))
@@ -801,6 +816,13 @@ class ActivityCompassApp(tk.Tk):
         )
         category_color.set(item.get("category_color") or CATEGORY_COLORS[0])
         category_color.pack(fill="x")
+        tk.Label(
+            fields,
+            text=f"イメージカラー（自動）: {item.get('project_color') or '未割り当て'}",
+            bg=COLORS["bg"],
+            fg=item.get("project_color") or COLORS["muted"],
+            font=("Segoe UI Semibold", 9),
+        ).pack(anchor="w", pady=(8, 0))
         due_at = labeled_entry("期限（空欄なら無期限）", item.get("due_at") or "")
         scheduled_at = labeled_entry("予定日時（例: 2026-08-03 10:00）", item.get("scheduled_at") or "")
         effort = labeled_entry("実装難易度 / 工数（1〜5）", str(item.get("effort") or 3))
