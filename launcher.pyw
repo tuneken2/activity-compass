@@ -44,6 +44,15 @@ def show_error(message: str) -> None:
     ctypes.windll.user32.MessageBoxW(None, message, "Activity Compass", 0x10)
 
 
+def console_python_executable() -> str:
+    executable = Path(sys.executable)
+    if executable.stem.lower() == "pythonw":
+        console_executable = executable.with_name("python.exe")
+        if console_executable.exists():
+            return str(console_executable)
+    return str(executable)
+
+
 class ControlHandler(BaseHTTPRequestHandler):
     actions: dict[str, threading.Event]
 
@@ -440,7 +449,7 @@ def main() -> None:
             )
             api_process = subprocess.Popen(
                 [
-                    sys.executable,
+                    console_python_executable(),
                     "-m",
                     "activity_compass.main",
                     "--no-ui",
