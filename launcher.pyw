@@ -20,12 +20,18 @@ API_URL = "http://127.0.0.1:8765/health"
 CONTROL_URL = "http://127.0.0.1:8766"
 CREATE_NO_WINDOW = 0x08000000
 ERROR_ALREADY_EXISTS = 183
+API_SCHEMA_VERSION = 2
 
 
 def api_is_ready() -> bool:
     try:
         with urllib.request.urlopen(API_URL, timeout=0.5) as response:
-            return response.status == 200 and b'"status": "ok"' in response.read()
+            payload = json.loads(response.read().decode("utf-8"))
+            return (
+                response.status == 200
+                and payload.get("status") == "ok"
+                and payload.get("api_schema_version") == API_SCHEMA_VERSION
+            )
     except Exception:
         return False
 
@@ -486,8 +492,26 @@ def main() -> None:
         None, False, "Local\\ActivityCompassLauncher"
     )
     if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
-        send_control("show")
-        return
+        if api_is_ready():
+            send_control("show")
+            return
+        # The files were updated while an older tray/API process was still
+        # running. Stop it so the current schema and migrations can load.
+        send_control("exit")
+        ctypes.windll.kernel32.CloseHandle(mutex)
+        mutex = None
+        for _ in range(50):
+            time.sleep(0.2)
+            candidate = ctypes.windll.kernel32.CreateMutexW(
+                None, False, "Local\\ActivityCompassLauncher"
+            )
+            if ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS:
+                mutex = candidate
+                break
+            ctypes.windll.kernel32.CloseHandle(candidate)
+        if mutex is None:
+            show_error("更新前のActivity Compassを終了できませんでした。")
+            return
 
     api_process: subprocess.Popen[bytes] | None = None
     control_server: ThreadingHTTPServer | None = None

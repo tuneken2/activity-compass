@@ -65,17 +65,6 @@ TYPE_COLORS = {
     "project": ("#F5E6DF", "#8A482F"),
 }
 
-CATEGORY_COLORS = (
-    "#3C7160",
-    "#527792",
-    "#9B7B28",
-    "#7E5D8D",
-    "#B15939",
-    "#477A7A",
-    "#8A5F73",
-    "#657547",
-)
-
 DEFAULT_VIEW = "projects"
 
 
@@ -804,25 +793,10 @@ class ActivityCompassApp(tk.Tk):
         )
         status.set(item.get("status", "inbox"))
         status.pack(side="left", fill="x", expand=True, padx=(5, 0))
-        category = labeled_entry("カテゴリー（プロジェクトのみ）", item.get("category") or "")
-        tk.Label(
-            fields, text="カテゴリー色", bg=COLORS["bg"], fg=COLORS["muted"],
-            font=("Segoe UI Semibold", 9),
-        ).pack(anchor="w", pady=(8, 3))
-        category_color = ttk.Combobox(
-            fields,
-            values=CATEGORY_COLORS,
-            state="readonly",
+        category = labeled_entry(
+            "カテゴリー（プロジェクトのみ・色は自動設定）",
+            item.get("category") or "",
         )
-        category_color.set(item.get("category_color") or CATEGORY_COLORS[0])
-        category_color.pack(fill="x")
-        tk.Label(
-            fields,
-            text=f"イメージカラー（自動）: {item.get('project_color') or '未割り当て'}",
-            bg=COLORS["bg"],
-            fg=item.get("project_color") or COLORS["muted"],
-            font=("Segoe UI Semibold", 9),
-        ).pack(anchor="w", pady=(8, 0))
         due_at = labeled_entry("期限（空欄なら無期限）", item.get("due_at") or "")
         scheduled_at = labeled_entry("予定日時（例: 2026-08-03 10:00）", item.get("scheduled_at") or "")
         effort = labeled_entry("実装難易度 / 工数（1〜5）", str(item.get("effort") or 3))
@@ -870,7 +844,6 @@ class ActivityCompassApp(tk.Tk):
                             else None
                         ),
                         "category": category.get(),
-                        "category_color": category_color.get(),
                         "details": details.get("1.0", "end").strip(),
                     },
                 )

@@ -85,6 +85,12 @@ class ApiEncodingTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("no-store", headers["Cache-Control"])
 
+    def test_health_reports_api_schema_version(self) -> None:
+        status, body, _ = self.get_json("/health")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["api_schema_version"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

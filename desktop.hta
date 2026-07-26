@@ -161,12 +161,6 @@
     var labels = {today:"今日", next:"次にやる", waiting:"待ち", someday:"いつか", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
     var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
     var statusLabels = {inbox:"未整理", today:"今日", next:"次に", in_progress:"進行中", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
-    var categoryColors = [
-      {value:"#3C7160", label:"深緑"}, {value:"#527792", label:"青"},
-      {value:"#9B7B28", label:"黄土"}, {value:"#7E5D8D", label:"紫"},
-      {value:"#B15939", label:"橙"}, {value:"#477A7A", label:"青緑"},
-      {value:"#8A5F73", label:"赤紫"}, {value:"#657547", label:"若草"}
-    ];
     var allRows = [];
     var projectRoots = [];
     var hiddenProjectRoots = {};
@@ -416,9 +410,7 @@
           '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project"], row.entity_type) + '</select>' +
           '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","in_progress","waiting","someday","done","cancelled"], row.status) + '</select>' +
           (row.entity_type === "project"
-            ? '<label class="label">カテゴリー</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
-              '<label class="label">カテゴリー色</label><select id="editCategoryColor">' + categoryColorOptions(row.category_color) + '</select>' +
-              '<label class="label">イメージカラー（自動割り当て）</label><input readonly value="' + escapeHtml(row.project_color || "") + '" style="border-left:12px solid ' + escapeHtml(row.project_color || "#B15939") + '" />' +
+            ? '<label class="label">カテゴリー（色は自動設定）</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
               '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" value="' + escapeHtml(row.project_rank || "") + '" />' +
               '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
             : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
@@ -451,18 +443,6 @@
         html += '<option value="' + escapeHtml(projectCatalog[i].id) + '"' +
           (projectCatalog[i].id === selected ? ' selected' : '') + '>' +
           escapeHtml(projectCatalog[i].title) + '</option>';
-      }
-      return html;
-    }
-
-    function categoryColorOptions(selected) {
-      var html = "";
-      var selectedColor = String(selected || "#3C7160").toUpperCase();
-      for (var i=0; i<categoryColors.length; i++) {
-        var item = categoryColors[i];
-        html += '<option value="' + item.value + '"' +
-          (item.value === selectedColor ? ' selected' : '') + '>' +
-          item.label + ' (' + item.value + ')</option>';
       }
       return html;
     }
@@ -539,7 +519,6 @@
       if (row.entity_type === "project") {
         payload.parent_project_id = document.getElementById("editParentProject").value || null;
         payload.category = document.getElementById("editCategory").value;
-        payload.category_color = document.getElementById("editCategoryColor").value;
         payload.project_rank = document.getElementById("editProjectRank").value || null;
       } else {
         payload.project_id = document.getElementById("editProject").value || null;

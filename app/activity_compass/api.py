@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, urlparse
 
 from .db import Database
 
+API_SCHEMA_VERSION = 2
+
 
 class ActivityApiHandler(BaseHTTPRequestHandler):
     db: Database
@@ -40,7 +42,14 @@ class ActivityApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/health":
-            self._json(200, {"status": "ok", "service": "activity-compass"})
+            self._json(
+                200,
+                {
+                    "status": "ok",
+                    "service": "activity-compass",
+                    "api_schema_version": API_SCHEMA_VERSION,
+                },
+            )
             return
         if parsed.path == "/v1/items":
             params = parse_qs(parsed.query)
