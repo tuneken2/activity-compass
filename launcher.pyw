@@ -136,6 +136,7 @@ class WNDCLASSEXW(ctypes.Structure):
 
 class TrayApplication:
     WM_DESTROY = 0x0002
+    WM_SETICON = 0x0080
     WM_TIMER = 0x0113
     WM_COMMAND = 0x0111
     WM_APP = 0x8000
@@ -145,9 +146,15 @@ class TrayApplication:
     WM_CONTEXTMENU = 0x007B
     SW_HIDE = 0
     SW_RESTORE = 9
+    ICON_SMALL = 0
+    ICON_BIG = 1
     IMAGE_ICON = 1
     LR_LOADFROMFILE = 0x0010
     LR_DEFAULTSIZE = 0x0040
+    SM_CXICON = 11
+    SM_CYICON = 12
+    SM_CXSMICON = 49
+    SM_CYSMICON = 50
     NIF_MESSAGE = 0x0001
     NIF_ICON = 0x0002
     NIF_TIP = 0x0004
@@ -209,6 +216,13 @@ class TrayApplication:
         self.user32.LoadImageW.restype = wintypes.HANDLE
         self.user32.LoadIconW.argtypes = [wintypes.HINSTANCE, ctypes.c_void_p]
         self.user32.LoadIconW.restype = wintypes.HICON
+        self.user32.SendMessageW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+        ]
+        self.user32.SendMessageW.restype = LRESULT
         self.shell32.Shell_NotifyIconW.argtypes = [
             wintypes.DWORD,
             ctypes.POINTER(NOTIFYICONDATAW),
@@ -218,7 +232,10 @@ class TrayApplication:
         self.app_window: int | None = None
         self.has_launched = False
         self.hwnd: int | None = None
-        self.icon: int | None = None
+        self.large_icon: int | None = None
+        self.small_icon: int | None = None
+        self._owned_icons: list[int] = []
+        self._iconized_window: int | None = None
         self.notify_data: NOTIFYICONDATAW | None = None
         self.tray_added = False
         self._last_tray_retry = 0.0
@@ -240,6 +257,7 @@ class TrayApplication:
             startupinfo=startupinfo,
         )
         self.app_window = None
+        self._iconized_window = None
         self.has_launched = True
 
     def _enum_window(self, hwnd: int, _: int) -> bool:
@@ -255,7 +273,22 @@ class TrayApplication:
     def _find_app_window(self) -> int | None:
         self.app_window = None
         self.user32.EnumWindows(self._enumproc, 0)
+        if self.app_window:
+            self._apply_window_icon(self.app_window)
         return self.app_window
+
+    def _apply_window_icon(self, hwnd: int) -> None:
+        if hwnd == self._iconized_window:
+            return
+        if self.large_icon:
+            self.user32.SendMessageW(
+                hwnd, self.WM_SETICON, self.ICON_BIG, self.large_icon
+            )
+        if self.small_icon:
+            self.user32.SendMessageW(
+                hwnd, self.WM_SETICON, self.ICON_SMALL, self.small_icon
+            )
+        self._iconized_window = hwnd
 
     def show_window(self) -> None:
         if self.process is None or self.process.poll() is not None:
@@ -380,23 +413,28 @@ class TrayApplication:
         )
         if not self.hwnd:
             raise ctypes.WinError()
-        self.icon = self.user32.LoadImageW(
-            None,
-            str(PROJECT_ROOT / "assets" / "activity-compass.ico"),
-            self.IMAGE_ICON,
-            0,
-            0,
-            self.LR_LOADFROMFILE | self.LR_DEFAULTSIZE,
+        icon_path = str(PROJECT_ROOT / "assets" / "activity-compass.ico")
+        self.large_icon = self._load_icon(
+            icon_path,
+            self.user32.GetSystemMetrics(self.SM_CXICON),
+            self.user32.GetSystemMetrics(self.SM_CYICON),
         )
-        if not self.icon:
-            self.icon = self.user32.LoadIconW(None, ctypes.c_void_p(32512))
+        self.small_icon = self._load_icon(
+            icon_path,
+            self.user32.GetSystemMetrics(self.SM_CXSMICON),
+            self.user32.GetSystemMetrics(self.SM_CYSMICON),
+        )
+        if not self.large_icon:
+            self.large_icon = self.user32.LoadIconW(None, ctypes.c_void_p(32512))
+        if not self.small_icon:
+            self.small_icon = self.large_icon
         data = NOTIFYICONDATAW()
         data.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
         data.hWnd = self.hwnd
         data.uID = 1
         data.uFlags = self.NIF_MESSAGE | self.NIF_ICON | self.NIF_TIP
         data.uCallbackMessage = self.WM_TRAYICON
-        data.hIcon = self.icon
+        data.hIcon = self.small_icon
         data.szTip = "Activity Compass"
         self.notify_data = data
         self.tray_added = bool(
@@ -404,6 +442,19 @@ class TrayApplication:
         )
         self._last_tray_retry = time.monotonic()
         self.user32.SetTimer(self.hwnd, 1, 150, None)
+
+    def _load_icon(self, path: str, width: int, height: int) -> int | None:
+        icon = self.user32.LoadImageW(
+            None,
+            path,
+            self.IMAGE_ICON,
+            width,
+            height,
+            self.LR_LOADFROMFILE,
+        )
+        if icon:
+            self._owned_icons.append(icon)
+        return icon or None
 
     def run(self) -> None:
         self._create_tray()
@@ -424,6 +475,9 @@ class TrayApplication:
                 self.process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        for icon in set(self._owned_icons):
+            self.user32.DestroyIcon(icon)
+        self._owned_icons.clear()
 
 
 def main() -> None:
