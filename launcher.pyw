@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -117,7 +118,43 @@ class NOTIFYICONDATAW(ctypes.Structure):
     ]
 
 
+class PROPERTYKEY(ctypes.Structure):
+    _fields_ = [("fmtid", GUID), ("pid", wintypes.DWORD)]
+
+
+class PROPVARIANT_VALUE(ctypes.Union):
+    _fields_ = [
+        ("pwszVal", wintypes.LPWSTR),
+        ("uhVal", ctypes.c_ulonglong),
+        ("_padding", ctypes.c_byte * 16),
+    ]
+
+
+class PROPVARIANT(ctypes.Structure):
+    _anonymous_ = ("value",)
+    _fields_ = [
+        ("vt", wintypes.WORD),
+        ("wReserved1", wintypes.WORD),
+        ("wReserved2", wintypes.WORD),
+        ("wReserved3", wintypes.WORD),
+        ("value", PROPVARIANT_VALUE),
+    ]
+
+
+def make_guid(value: str) -> GUID:
+    return GUID.from_buffer_copy(uuid.UUID(value).bytes_le)
+
+
+APP_USER_MODEL_ID = "Tuneken.ActivityCompass.Desktop"
+APP_USER_MODEL_FMTID = make_guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3")
+IID_IPROPERTY_STORE = make_guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")
+PKEY_APP_USER_MODEL_RELAUNCH_COMMAND = PROPERTYKEY(APP_USER_MODEL_FMTID, 2)
+PKEY_APP_USER_MODEL_RELAUNCH_ICON_RESOURCE = PROPERTYKEY(APP_USER_MODEL_FMTID, 3)
+PKEY_APP_USER_MODEL_ID = PROPERTYKEY(APP_USER_MODEL_FMTID, 5)
+
+
 LRESULT = ctypes.c_ssize_t
+HRESULT = ctypes.c_long
 WNDPROC = ctypes.WINFUNCTYPE(
     LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 )
@@ -185,6 +222,7 @@ class TrayApplication:
         self.user32 = ctypes.windll.user32
         self.shell32 = ctypes.windll.shell32
         self.kernel32 = ctypes.windll.kernel32
+        self.ole32 = ctypes.windll.ole32
         self.kernel32.GetModuleHandleW.restype = wintypes.HMODULE
         self.user32.RegisterClassExW.argtypes = [ctypes.POINTER(WNDCLASSEXW)]
         self.user32.RegisterClassExW.restype = wintypes.ATOM
@@ -234,6 +272,17 @@ class TrayApplication:
             ctypes.POINTER(NOTIFYICONDATAW),
         ]
         self.shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+        self.shell32.SHGetPropertyStoreForWindow.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(GUID),
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        self.shell32.SHGetPropertyStoreForWindow.restype = HRESULT
+        self.ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        self.ole32.CoInitializeEx.restype = HRESULT
+        self.ole32.CoUninitialize.argtypes = []
+        self.ole32.CoUninitialize.restype = None
+        self._com_initialized = self.ole32.CoInitializeEx(None, 0x2) in (0, 1)
         self.process: subprocess.Popen[bytes] | None = None
         self.app_window: int | None = None
         self.has_launched = False
@@ -242,6 +291,7 @@ class TrayApplication:
         self.small_icon: int | None = None
         self._owned_icons: list[int] = []
         self._iconized_window: int | None = None
+        self._taskbar_window: int | None = None
         self.notify_data: NOTIFYICONDATAW | None = None
         self.tray_added = False
         self._last_tray_retry = 0.0
@@ -264,6 +314,7 @@ class TrayApplication:
         )
         self.app_window = None
         self._iconized_window = None
+        self._taskbar_window = None
         self.has_launched = True
 
     def _enum_window(self, hwnd: int, _: int) -> bool:
@@ -281,6 +332,7 @@ class TrayApplication:
         self.user32.EnumWindows(self._enumproc, 0)
         if self.app_window:
             self._apply_window_icon(self.app_window)
+            self._apply_taskbar_properties(self.app_window)
         return self.app_window
 
     def _apply_window_icon(self, hwnd: int) -> None:
@@ -295,6 +347,57 @@ class TrayApplication:
                 hwnd, self.WM_SETICON, self.ICON_SMALL, self.small_icon
             )
         self._iconized_window = hwnd
+
+    def _apply_taskbar_properties(self, hwnd: int) -> None:
+        if hwnd == self._taskbar_window:
+            return
+        store = ctypes.c_void_p()
+        result = self.shell32.SHGetPropertyStoreForWindow(
+            hwnd, ctypes.byref(IID_IPROPERTY_STORE), ctypes.byref(store)
+        )
+        if result < 0 or not store.value:
+            return
+
+        vtable = ctypes.cast(
+            store, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        ).contents
+        release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(vtable[2])
+        set_value = ctypes.WINFUNCTYPE(
+            HRESULT,
+            ctypes.c_void_p,
+            ctypes.POINTER(PROPERTYKEY),
+            ctypes.POINTER(PROPVARIANT),
+        )(vtable[6])
+        commit = ctypes.WINFUNCTYPE(HRESULT, ctypes.c_void_p)(vtable[7])
+
+        windows_dir = Path(os.environ.get("WINDIR", r"C:\Windows"))
+        relaunch_command = (
+            f'"{windows_dir / "System32" / "wscript.exe"}" '
+            f'"{PROJECT_ROOT / "Activity Compass.vbs"}"'
+        )
+        icon_resource = (
+            f"{PROJECT_ROOT / 'assets' / 'activity-compass.ico'},0"
+        )
+        properties = (
+            (PKEY_APP_USER_MODEL_RELAUNCH_COMMAND, relaunch_command),
+            (PKEY_APP_USER_MODEL_RELAUNCH_ICON_RESOURCE, icon_resource),
+            (PKEY_APP_USER_MODEL_ID, APP_USER_MODEL_ID),
+        )
+
+        succeeded = True
+        try:
+            for key, value in properties:
+                buffer = ctypes.create_unicode_buffer(value)
+                variant = PROPVARIANT()
+                variant.vt = 31  # VT_LPWSTR
+                variant.pwszVal = ctypes.cast(buffer, wintypes.LPWSTR)
+                if set_value(store, ctypes.byref(key), ctypes.byref(variant)) < 0:
+                    succeeded = False
+                    break
+            if succeeded and commit(store) >= 0:
+                self._taskbar_window = hwnd
+        finally:
+            release(store)
 
     def show_window(self) -> None:
         if self.process is None or self.process.poll() is not None:
@@ -484,6 +587,8 @@ class TrayApplication:
         for icon in set(self._owned_icons):
             self.user32.DestroyIcon(icon)
         self._owned_icons.clear()
+        if self._com_initialized:
+            self.ole32.CoUninitialize()
 
 
 def main() -> None:
