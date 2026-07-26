@@ -5,6 +5,7 @@ from activity_compass.ui import (
     TYPE_LABELS,
     format_list_date,
     format_priority,
+    format_priority_color,
 )
 
 
@@ -23,6 +24,12 @@ class UiFormattingTests(unittest.TestCase):
         self.assertEqual(format_priority("2"), "中")
         self.assertEqual(format_priority(1), "低")
         self.assertEqual(format_priority(0), "—")
+
+    def test_priority_text_color_is_graded(self) -> None:
+        self.assertEqual(format_priority_color(3), "#A84628")
+        self.assertEqual(format_priority_color("2"), "#8A6815")
+        self.assertEqual(format_priority_color(1), "#3C7160")
+        self.assertEqual(format_priority_color(0), "#6E7773")
 
 
 if __name__ == "__main__":

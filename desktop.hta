@@ -63,7 +63,10 @@
     .project-toggle { display: inline-block; width: 20px; font-size: 11px; vertical-align: 1px; }
     .project-swatch { display: inline-block; width: 10px; height: 10px; margin: 0 8px 0 1px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d8d6cf; }
     .status-text { margin-right: 9px; }
-    .c-priority { width: 76px; -ms-flex: 0 0 76px; flex: 0 0 76px; padding-top: 20px; text-align: center; color: #d4673d; font-size: 11px; font-weight: 700; }
+    .c-priority { width: 76px; -ms-flex: 0 0 76px; flex: 0 0 76px; padding-top: 20px; text-align: center; color: #6e7773; font-size: 11px; font-weight: 700; }
+    .priority-high { color: #a84628; }
+    .priority-medium { color: #8a6815; }
+    .priority-low { color: #3c7160; }
     .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
     .date-main { display: block; color: #26322d; font-size: 13px; font-weight: 600; line-height: 20px; }
     .date-context { display: block; color: #858c88; font-size: 10px; line-height: 17px; }
@@ -321,6 +324,7 @@
         var rowType = isHistory || isReview ? "task" : (row.entity_type || "task");
         var priorityValue = Number(row.priority || 0);
         var priority = priorityValue === 3 ? "高" : (priorityValue === 2 ? "中" : (priorityValue === 1 ? "低" : "—"));
+        var priorityClass = priorityValue === 3 ? " priority-high" : (priorityValue === 2 ? " priority-medium" : (priorityValue === 1 ? " priority-low" : ""));
         var category = rowCategory(row);
         var categoryBadge = category.name
           ? '<span class="category-pill" title="カテゴリー" style="background:' + escapeHtml(category.color || "#77736B") + '">' + escapeHtml(category.name) + '</span>'
@@ -340,7 +344,7 @@
           '<div class="c-meta"><span class="type-pill">' + escapeHtml(type) + '</span>' +
           categoryBadge +
           '<span class="status-text">' + escapeHtml(status) + '</span>' +
-          '</div></div><div class="c-priority" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
+          '</div></div><div class="c-priority' + priorityClass + '" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
           '<div class="c-date"><span class="date-main">' + escapeHtml(date.main) + '</span>' +
           '<span class="date-context">' + escapeHtml(date.context) + '</span></div></div>';
       }

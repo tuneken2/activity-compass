@@ -65,6 +65,12 @@ TYPE_COLORS = {
     "project": ("#F5E6DF", "#8A482F"),
 }
 
+PRIORITY_COLORS = {
+    3: "#A84628",
+    2: "#8A6815",
+    1: "#3C7160",
+}
+
 DEFAULT_VIEW = "projects"
 
 
@@ -74,6 +80,14 @@ def format_priority(priority: Any) -> str:
     except (TypeError, ValueError):
         value = 0
     return {3: "高", 2: "中", 1: "低"}.get(value, "—")
+
+
+def format_priority_color(priority: Any) -> str:
+    try:
+        value = int(priority or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return PRIORITY_COLORS.get(value, COLORS["muted"])
 
 
 def format_list_date(value: str | None, kind: str) -> tuple[str, str]:
@@ -570,7 +584,7 @@ class ActivityCompassApp(tk.Tk):
             item,
             text=priority_text,
             bg=base_bg,
-            fg=COLORS["accent"],
+            fg=format_priority_color(row.get("priority")),
             font=("Segoe UI Semibold", 8),
             width=7,
         )
