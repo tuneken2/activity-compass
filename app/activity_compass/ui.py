@@ -64,6 +64,8 @@ TYPE_COLORS = {
     "project": ("#F5E6DF", "#8A482F"),
 }
 
+DEFAULT_VIEW = "projects"
+
 
 def format_list_date(value: str | None, kind: str) -> tuple[str, str]:
     """Return a short, scan-friendly date and its small contextual label."""
@@ -93,7 +95,7 @@ class ActivityCompassApp(tk.Tk):
     def __init__(self, db: Database):
         super().__init__()
         self.db = db
-        self.current_view = "projects"
+        self.current_view = DEFAULT_VIEW
         self.expanded_project_ids: set[str] = set()
         self.search_query = ""
         self.rows: dict[str, dict[str, Any]] = {}

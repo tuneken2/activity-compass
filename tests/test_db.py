@@ -150,6 +150,26 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual(self.db.counts()["projects"], 2)
 
+    def test_project_tasks_view_returns_tasks_grouped_under_projects(self) -> None:
+        project = self.db.create_item(
+            {"title": "展開対象プロジェクト", "entity_type": "project"}
+        )
+        child = self.db.create_item(
+            {
+                "title": "表示される子タスク",
+                "entity_type": "task",
+                "project_id": project["id"],
+            }
+        )
+        self.db.create_item(
+            {"title": "所属なしタスク", "entity_type": "task"}
+        )
+
+        project_tasks = self.db.list_items("project_tasks")
+
+        self.assertEqual([item["id"] for item in project_tasks], [child["id"]])
+        self.assertEqual(project_tasks[0]["project_title"], project["title"])
+
     def test_project_priority_can_be_read_from_overview(self) -> None:
         project = self.db.create_item(
             {
