@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+build/
+*.spec
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Machine-specific launchers and local AI settings
+*.lnk
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Credentials and local environment overrides
+.env
+.env.*
+!.env.example
+secrets/

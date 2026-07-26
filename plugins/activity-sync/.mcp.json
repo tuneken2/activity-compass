@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "activity-compass": {
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${PLUGIN_ROOT}/scripts/mcp-server.ps1"
+      ]
+    }
+  }
+}

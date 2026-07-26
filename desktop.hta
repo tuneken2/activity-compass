@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="X-UA-Compatible" content="IE=11" />
+  <meta charset="utf-8" />
+  <title>Activity Compass</title>
+  <hta:application
+    id="activityCompass"
+    applicationname="Activity Compass"
+    icon="assets\activity-compass.ico"
+    border="thin"
+    caption="yes"
+    maximizebutton="yes"
+    minimizebutton="yes"
+    scroll="no"
+    singleinstance="yes"
+    sysmenu="yes"
+  />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { font-family: "Segoe UI", Meiryo, sans-serif; color: #1e2925; background: #f5f4ef; }
+    button, input, textarea, select { font-family: inherit; }
+    .app { display: -ms-flexbox; display: flex; height: 100%; }
+    .sidebar { width: 194px; flex: 0 0 194px; background: #17211d; color: #dce7e1; padding: 28px 0 20px; position: relative; }
+    .brand { margin: 0 24px 34px; color: #fff; font-size: 20px; font-weight: 700; line-height: 1.06; letter-spacing: .04em; }
+    .nav { display: block; width: 100%; border: 0; text-align: left; padding: 12px 22px; background: transparent; color: #dce7e1; cursor: pointer; font-size: 14px; }
+    .nav:hover, .nav.active { background: #2b3833; color: #fff; }
+    .nav-count { float: right; color: #84948c; }
+    .motto { position: absolute; left: 24px; bottom: 20px; color: #84948c; font-size: 12px; line-height: 1.7; }
+    .main { -ms-flex: 1; flex: 1; min-width: 0; padding: 24px 28px; }
+    .header { height: 42px; display: -ms-flexbox; display: flex; -ms-flex-align: center; align-items: center; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: 27px; font-weight: 650; }
+    .result-count { margin-left: 12px; color: #6e7773; font-size: 13px; }
+    .search { margin-left: auto; width: 240px; padding: 9px 12px; border: 1px solid #dedcd3; background: #fff; outline: none; }
+    .quick { height: 51px; display: -ms-flexbox; display: flex; margin-bottom: 14px; border: 1px solid #dedcd3; background: #fff; }
+    .quick input { -ms-flex: 1; flex: 1; border: 0; padding: 0 15px; font-size: 15px; outline: none; }
+    .primary { border: 0; background: #d4673d; color: #fff; padding: 0 23px; margin: 5px; cursor: pointer; font-weight: 600; }
+    .primary:hover { background: #a84628; }
+    .workspace { display: -ms-flexbox; display: flex; height: calc(100% - 121px); gap: 12px; }
+    .list-card { -ms-flex: 1; flex: 1; min-width: 420px; overflow: auto; background: #fff; border: 1px solid #dedcd3; }
+    .detail { width: 310px; flex: 0 0 310px; overflow: auto; background: #fff; border: 1px solid #e4e1d8; padding: 20px; }
+    .table-head, .row { display: -ms-flexbox; display: flex; -ms-flex-align: stretch; align-items: stretch; }
+    .table-head { position: sticky; top: 0; z-index: 2; height: 38px; padding: 0 18px; background: #ece9df; color: #6e7773; font-size: 11px; font-weight: 600; -ms-flex-align: center; align-items: center; }
+    .head-title { -ms-flex: 1; flex: 1; }
+    .head-priority { width: 76px; text-align: center; }
+    .head-date { width: 112px; text-align: right; }
+    .row { position: relative; min-height: 66px; border-bottom: 1px solid #ebe9e2; cursor: pointer; background: #fff; }
+    .row:nth-child(even) { background: #fafaf7; }
+    .row:hover { background: #f7f2ed; }
+    .row.selected { background: #f3e4dc; }
+    .row-accent { width: 4px; -ms-flex: 0 0 4px; flex: 0 0 4px; background: #3c7160; }
+    .row-main { -ms-flex: 1; flex: 1; min-width: 0; padding: 10px 12px 8px 14px; }
+    .c-title { font-size: 14px; line-height: 20px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .c-meta { height: 22px; color: #77807c; font-size: 11px; line-height: 22px; white-space: nowrap; overflow: hidden; }
+    .type-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; background: #e8f0ec; color: #315e4f; font-weight: 600; }
+    .status-text { margin-right: 9px; }
+    .c-priority { width: 76px; -ms-flex: 0 0 76px; flex: 0 0 76px; padding-top: 20px; text-align: center; color: #d4673d; font-size: 11px; font-weight: 700; }
+    .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
+    .date-main { display: block; color: #26322d; font-size: 13px; font-weight: 600; line-height: 20px; }
+    .date-context { display: block; color: #858c88; font-size: 10px; line-height: 17px; }
+    .overdue .date-main { color: #a84628; }
+    .row.selected .row-accent { background: #d4673d !important; }
+    .row-type-schedule .row-accent { background: #527792; }
+    .row-type-schedule .type-pill { background: #e7eef5; color: #355b78; }
+    .row-type-idea .row-accent { background: #9b7b28; }
+    .row-type-idea .type-pill { background: #f4eedb; color: #795f19; }
+    .row-type-waiting .row-accent { background: #806b5b; }
+    .row-type-waiting .type-pill { background: #efeae5; color: #6c5747; }
+    .row-type-decision .row-accent { background: #7e5d8d; }
+    .row-type-decision .type-pill { background: #eee7f2; color: #684b76; }
+    .row-type-project .row-accent { background: #b15939; }
+    .row-type-project .type-pill { background: #f5e6df; color: #8a482f; }
+    .empty { padding: 56px 30px; text-align: center; color: #8c928f; line-height: 1.8; }
+    .eyebrow { color: #6e7773; font-size: 11px; font-weight: 700; margin-bottom: 9px; }
+    .detail h2 { margin: 0 0 8px; font-size: 19px; line-height: 1.35; }
+    .meta { color: #6e7773; font-size: 12px; margin-bottom: 14px; }
+    .detail textarea, .detail input, .detail select { width: 100%; border: 1px solid #dedcd3; background: #faf9f5; padding: 9px; margin: 3px 0 9px; outline: none; }
+    .detail textarea { height: 126px; resize: vertical; line-height: 1.5; }
+    .label { display: block; color: #6e7773; font-size: 11px; font-weight: 600; margin-top: 6px; }
+    .action-row { margin-top: 12px; }
+    .action { border: 0; color: #fff; background: #3c7160; padding: 8px 11px; margin: 0 5px 6px 0; cursor: pointer; font-size: 12px; }
+    .action.orange { background: #d4673d; }
+    .action.gray { background: #77736b; }
+    .toast { display: none; position: fixed; right: 24px; bottom: 24px; width: 340px; padding: 16px 18px; background: #17211d; color: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.25); z-index: 20; }
+    .toast small { color: #9fb0a8; display: block; margin-bottom: 5px; }
+    .badge { display: inline-block; padding: 3px 7px; border-radius: 10px; background: #f2e8e1; color: #a84628; font-size: 11px; }
+    .project-controls { display: none; padding: 9px 12px; border-bottom: 1px solid #dedcd3; background: #faf9f5; color: #6e7773; font-size: 11px; line-height: 28px; }
+    .project-controls.visible { display: block; }
+    .project-filter { border: 1px solid #c9c7be; background: #fff; color: #315e4f; margin: 0 4px 4px 0; padding: 4px 8px; cursor: pointer; font-size: 11px; }
+    .project-filter.hidden { color: #9a9e9b; background: #ecebe6; text-decoration: line-through; }
+    .project-sort { float: right; height: 28px; border: 1px solid #c9c7be; background: #fff; color: #26322d; }
+    .project-row .c-title:before { content: "\25B6"; display: inline-block; width: 20px; color: #b15939; }
+    .project-row.expanded .c-title:before { content: "\25BC"; }
+    .project-child { min-height: 58px; margin-left: 24px; border-left: 1px solid #dedcd3; }
+    .project-child .row-main { padding-top: 7px; padding-bottom: 6px; }
+    .project-child .c-title { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">ACTIVITY<br />COMPASS</div>
+      <button class="nav active" id="nav-projects" onclick="changeView('projects')">プロジェクト <span class="nav-count" id="count-projects"></span></button>
+      <button class="nav" id="nav-today" onclick="changeView('today')">今日 <span class="nav-count" id="count-today"></span></button>
+      <button class="nav" id="nav-next" onclick="changeView('next')">次にやる <span class="nav-count" id="count-next"></span></button>
+      <button class="nav" id="nav-waiting" onclick="changeView('waiting')">待ち <span class="nav-count" id="count-waiting"></span></button>
+      <button class="nav" id="nav-someday" onclick="changeView('someday')">いつか <span class="nav-count" id="count-someday"></span></button>
+      <button class="nav" id="nav-review" onclick="changeView('review')">確認待ち <span class="nav-count" id="count-review"></span></button>
+      <button class="nav" id="nav-history" onclick="changeView('history')">更新履歴</button>
+      <button class="nav" id="nav-all" onclick="changeView('all')">すべて</button>
+      <button class="nav" onclick="exportData()">データを書き出す</button>
+      <div class="motto">会話で決まったことを<br />頭の外へ。</div>
+    </aside>
+    <main class="main">
+      <div class="header">
+        <h1 id="heading">プロジェクト</h1>
+        <span class="result-count" id="resultCount"></span>
+        <input class="search" id="searchInput" placeholder="検索" onkeydown="if(event.keyCode===13){searchItems();}" />
+      </div>
+      <div class="quick">
+        <input id="quickInput" placeholder="新しいタスクを追加" onkeydown="if(event.keyCode===13){quickAdd();}" />
+        <button class="primary" onclick="quickAdd()">追加</button>
+      </div>
+      <div class="workspace">
+        <section class="list-card">
+          <div class="table-head">
+            <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div>
+          </div>
+          <div class="project-controls visible" id="projectControls">
+            <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
+              <option value="priority">優先度順</option>
+              <option value="parent">親プロジェクト順</option>
+              <option value="updated">更新順</option>
+            </select>
+            <span>プロジェクトをクリックすると、含まれる子タスクを表示します。</span>
+          </div>
+          <div id="rows"></div>
+        </section>
+        <aside class="detail" id="detail">
+          <div class="eyebrow">詳細</div>
+          <div class="empty">左の項目を選択してください。</div>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"><small>そろそろです</small><strong id="toastText"></strong></div>
+
+  <script>
+    var API = "http://127.0.0.1:8765";
+    var view = "projects";
+    var rows = [];
+    var selectedIndex = -1;
+    var labels = {today:"今日", next:"次にやる", waiting:"待ち", someday:"いつか", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
+    var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
+    var statusLabels = {inbox:"未整理", today:"今日", next:"次に", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
+    var allRows = [];
+    var projectRoots = [];
+    var hiddenProjectRoots = {};
+    var projectCatalog = [];
+    var projectChildRows = [];
+    var expandedProjects = {};
+
+    function escapeHtml(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    function request(method, path, data, done) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(method, API + path, true);
+      xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          done(null, xhr.responseText ? JSON.parse(xhr.responseText) : {});
+        } else {
+          done(new Error("通信に失敗しました (" + xhr.status + ")"));
+        }
+      };
+      xhr.send(data ? JSON.stringify(data) : null);
+    }
+
+    function changeView(next) {
+      view = next;
+      selectedIndex = -1;
+      document.getElementById("searchInput").value = "";
+      document.getElementById("heading").innerText = labels[view];
+      document.getElementById("projectControls").className = view === "projects" ? "project-controls visible" : "project-controls";
+      var navs = document.querySelectorAll(".nav");
+      for (var i=0; i<navs.length; i++) navs[i].className = "nav";
+      document.getElementById("nav-" + view).className = "nav active";
+      loadRows();
+    }
+
+    function loadRows(query) {
+      var path;
+      if (query) path = "/v1/items?q=" + encodeURIComponent(query);
+      else if (view === "history") path = "/v1/history";
+      else path = "/v1/items?view=" + encodeURIComponent(view);
+      request("GET", path, null, function(err, data) {
+        if (err) { showOffline(); return; }
+        allRows = view === "history" && !query ? data.events : data.items;
+        if (data.counts) updateCounts(data.counts);
+        selectedIndex = -1;
+        if (view === "projects" && !query) {
+          request("GET", "/v1/items?view=project_tasks", null, function(childErr, childData) {
+            projectChildRows = childErr || !childData.items ? [] : childData.items;
+            renderRows();
+            clearDetail();
+          });
+        } else {
+          rows = allRows.slice(0);
+          renderRows(query);
+          clearDetail();
+        }
+      });
+    }
+
+    function updateCounts(counts) {
+      var keys = ["today","next","waiting","someday","projects","review"];
+      for (var i=0; i<keys.length; i++) {
+        document.getElementById("count-" + keys[i]).innerText = counts[keys[i]] || "";
+      }
+    }
+
+    function formatListDate(value, kind) {
+      if (!value) return {main:"無期限", context:"締切なし", overdue:false};
+      var parts = value.substring(0, 10).split("-");
+      if (parts.length !== 3) return {main:value.substring(0, 10), context:kind, overdue:false};
+      var item = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      var days = Math.round((item.getTime() - today.getTime()) / 86400000);
+      if (kind === "期限" && days < 0) {
+        return {main:"期限超過", context:(item.getMonth() + 1) + "/" + item.getDate(), overdue:true};
+      }
+      if (days === 0) return {main:"今日", context:kind, overdue:false};
+      if (days === 1) return {main:"明日", context:kind, overdue:false};
+      var shortDate = item.getFullYear() === today.getFullYear()
+        ? (item.getMonth() + 1) + "/" + item.getDate()
+        : item.getFullYear() + "/" + (item.getMonth() + 1) + "/" + item.getDate();
+      return {main:shortDate, context:kind, overdue:false};
+    }
+
+    function renderRows(query) {
+      if (view === "projects" && !query) {
+        var projects = allRows.slice(0);
+        var sortMode = document.getElementById("projectSort").value;
+        projects.sort(function(a, b) {
+          if (sortMode === "updated") return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+          if (sortMode === "parent") {
+            var parentCompare = String(a.root_project_title || a.title).localeCompare(String(b.root_project_title || b.title));
+            return parentCompare || String(a.title).localeCompare(String(b.title));
+          }
+          return Number(b.priority || 0) - Number(a.priority || 0) ||
+            String(a.root_project_title || a.title).localeCompare(String(b.root_project_title || b.title));
+        });
+        rows = [];
+        for (var projectIndex=0; projectIndex<projects.length; projectIndex++) {
+          rows.push(projects[projectIndex]);
+          if (expandedProjects[projects[projectIndex].id]) {
+            var children = projectTasks(projects[projectIndex].id);
+            for (var childIndex=0; childIndex<children.length; childIndex++) rows.push(children[childIndex]);
+          }
+        }
+      }
+      var html = "";
+      for (var i=0; i<rows.length; i++) {
+        var row = rows[i];
+        var isProjectOverview = view === "projects" && !query;
+        var isProject = isProjectOverview && row.entity_type === "project";
+        var childCount = isProject ? projectTasks(row.id).length : 0;
+        var isHistory = view === "history" && !query;
+        var isReview = view === "review" && !query;
+        var title = row.title || "削除済み項目";
+        var type = isHistory || isReview ? row.action : (typeLabels[row.entity_type] || row.entity_type);
+        var status = isHistory ? "履歴" : (isReview ? "確認待ち" : (statusLabels[row.status] || row.status));
+        var dateKind = isHistory ? "更新" : (isReview ? "受付" : (row.due_at ? "期限" : "予定"));
+        var dateValue = isHistory || isReview
+          ? (row.created_at || "")
+          : (row.due_at || row.scheduled_at || "");
+        var date = formatListDate(dateValue, dateKind);
+        var rowType = isHistory || isReview ? "task" : (row.entity_type || "task");
+        var priorityValue = Number(row.priority || 0);
+        var priority = priorityValue === 3 ? "3 高" : (priorityValue === 2 ? "2 中" : (priorityValue === 1 ? "1 低" : "0"));
+        if (isProject) status = "子タスク " + childCount + "件 · " + (expandedProjects[row.id] ? "クリックで閉じる" : "クリックで展開");
+        var projectClass = isProject ? " project-row" + (expandedProjects[row.id] ? " expanded" : "") : (isProjectOverview ? " project-child" : "");
+        var clickAction = isProject ? "toggleProject(" + i + ")" : "selectRow(" + i + ")";
+        html += '<div class="row row-type-' + escapeHtml(rowType) + projectClass + (date.overdue ? ' overdue' : '') + '" id="row-' + i + '" onclick="' + clickAction + '">' +
+          '<div class="row-accent"></div><div class="row-main">' +
+          '<div class="c-title">' + escapeHtml(title) + '</div>' +
+          '<div class="c-meta"><span class="type-pill">' + escapeHtml(type) + '</span>' +
+          '<span class="status-text">' + escapeHtml(status) + '</span>' +
+          '</div></div><div class="c-priority" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
+          '<div class="c-date"><span class="date-main">' + escapeHtml(date.main) + '</span>' +
+          '<span class="date-context">' + escapeHtml(date.context) + '</span></div></div>';
+      }
+      if (!rows.length) html = view === "projects" && !query
+        ? '<div class="empty">プロジェクトはまだありません。<br />種類を「プロジェクト」にした項目がここに並びます。</div>'
+        : '<div class="empty">今ここで気にする項目はありません。<br />必要なものは適切な時に浮上します。</div>';
+      document.getElementById("rows").innerHTML = html;
+      document.getElementById("resultCount").innerText = (view === "projects" && !query ? allRows.length : rows.length) + "件";
+    }
+
+    function projectTasks(projectId) {
+      var children = [];
+      for (var i=0; i<projectChildRows.length; i++) {
+        if (projectChildRows[i].project_id === projectId) children.push(projectChildRows[i]);
+      }
+      children.sort(function(a, b) {
+        return Number(b.priority || 0) - Number(a.priority || 0) ||
+          String(a.due_at || "9999").localeCompare(String(b.due_at || "9999"));
+      });
+      return children;
+    }
+
+    function toggleProject(index) {
+      var project = rows[index];
+      expandedProjects[project.id] = !expandedProjects[project.id];
+      renderRows();
+      for (var i=0; i<rows.length; i++) {
+        if (rows[i].id === project.id) {
+          selectRow(i);
+          break;
+        }
+      }
+    }
+
+    function changeProjectSort() {
+      selectedIndex = -1;
+      renderRows();
+      clearDetail();
+    }
+
+    function selectRow(index) {
+      selectedIndex = index;
+      var existing = document.querySelectorAll(".row");
+      for (var i=0; i<existing.length; i++) existing[i].className = existing[i].className.replace(/\sselected\b/g, "");
+      var node = document.getElementById("row-" + index);
+      if (node) node.className += " selected";
+      renderDetail(rows[index]);
+    }
+
+    function clearDetail() {
+      document.getElementById("detail").innerHTML = '<div class="eyebrow">詳細</div><div class="empty">左の項目を選択してください。</div>';
+    }
+
+    function renderDetail(row) {
+      var html = '<div class="eyebrow">詳細</div>';
+      if (view === "history") {
+        html += '<h2>' + escapeHtml(row.title || "削除済み項目") + '</h2>' +
+          '<div class="meta">' + escapeHtml(row.action) + ' · ' + escapeHtml((row.created_at || "").substring(0,16)) + '</div>' +
+          '<textarea readonly>' + escapeHtml(row.payload_json || "") + '</textarea>';
+      } else if (view === "review") {
+        html += '<h2>' + escapeHtml(row.title) + '</h2><div class="meta"><span class="badge">確認待ち</span></div>' +
+          '<p>' + escapeHtml(row.reason) + '</p><div class="action-row">' +
+          '<button class="action orange" onclick="resolveReview(true)">承認</button>' +
+          '<button class="action gray" onclick="resolveReview(false)">却下</button></div>';
+      } else {
+        html += '<label class="label">タイトル</label><input id="editTitle" value="' + escapeHtml(row.title) + '" />' +
+          '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project"], row.entity_type) + '</select>' +
+          '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","waiting","someday","done","cancelled"], row.status) + '</select>' +
+          (row.entity_type === "project"
+            ? '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
+            : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
+          '<label class="label">期限（空欄なら無期限）</label><input id="editDue" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
+          '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />' +
+          '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
+          '<label class="label">優先度（自動）</label><input readonly value="' + escapeHtml(String(row.priority || 0) + " — " + (row.priority_reason || "")) + '" />' +
+          '<label class="label">詳細</label><textarea id="editDetails">' + escapeHtml(row.details || "") + '</textarea>' +
+          '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
+          '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
+          '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
+          '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button></div>';
+      }
+      document.getElementById("detail").innerHTML = html;
+    }
+
+    function options(values, selected) {
+      var html = "";
+      for (var i=0; i<values.length; i++) {
+        html += '<option value="' + values[i] + '"' + (values[i] === selected ? ' selected' : '') + '>' + escapeHtml(typeLabels[values[i]] || statusLabels[values[i]] || values[i]) + '</option>';
+      }
+      return html;
+    }
+
+    function projectOptions(selected, excludeId) {
+      var html = '<option value="">設定なし</option>';
+      for (var i=0; i<projectCatalog.length; i++) {
+        if (projectCatalog[i].id === excludeId) continue;
+        html += '<option value="' + escapeHtml(projectCatalog[i].id) + '"' +
+          (projectCatalog[i].id === selected ? ' selected' : '') + '>' +
+          escapeHtml(projectCatalog[i].title) + '</option>';
+      }
+      return html;
+    }
+
+    function loadProjectCatalog() {
+      request("GET", "/v1/items?view=projects", null, function(err, data) {
+        if (!err && data.items) projectCatalog = data.items;
+      });
+    }
+
+    function quickAdd() {
+      var input = document.getElementById("quickInput");
+      var title = input.value.replace(/^\s+|\s+$/g, "");
+      if (!title) return;
+      request("POST", "/v1/items", {entity_type:"task", title:title, status:"inbox"}, function(err) {
+        if (err) { alert(err.message); return; }
+        input.value = "";
+        loadRows();
+      });
+    }
+
+    function searchItems() {
+      var query = document.getElementById("searchInput").value.replace(/^\s+|\s+$/g, "");
+      document.getElementById("heading").innerText = query ? "検索: " + query : labels[view];
+      loadRows(query);
+    }
+
+    function saveItem() {
+      if (selectedIndex < 0) return;
+      var row = rows[selectedIndex];
+      var payload = {
+        title: document.getElementById("editTitle").value,
+        entity_type: document.getElementById("editType").value,
+        status: document.getElementById("editStatus").value,
+        due_at: document.getElementById("editDue").value || null,
+        scheduled_at: document.getElementById("editScheduled").value || null,
+        effort: Number(document.getElementById("editEffort").value || 3),
+        details: document.getElementById("editDetails").value
+      };
+      if (row.entity_type === "project") {
+        payload.parent_project_id = document.getElementById("editParentProject").value || null;
+      } else {
+        payload.project_id = document.getElementById("editProject").value || null;
+      }
+      request("POST", "/v1/items/" + encodeURIComponent(row.id), payload, function(err) {
+        if (err) { alert(err.message); return; }
+        loadProjectCatalog();
+        loadRows();
+      });
+    }
+
+    function setStatus(status) {
+      if (selectedIndex < 0) return;
+      request("POST", "/v1/items/" + encodeURIComponent(rows[selectedIndex].id) + "/status", {status:status}, function(err) {
+        if (err) { alert(err.message); return; }
+        loadRows();
+      });
+    }
+
+    function resolveReview(approve) {
+      if (selectedIndex < 0) return;
+      var action = approve ? "approve" : "reject";
+      request("POST", "/v1/reviews/" + encodeURIComponent(rows[selectedIndex].id) + "/" + action, {}, function(err) {
+        if (err) { alert(err.message); return; }
+        loadRows();
+      });
+    }
+
+    function exportData() {
+      request("POST", "/v1/export", {}, function(err, data) {
+        if (err) { alert(err.message); return; }
+        alert("書き出しました。\n" + data.path);
+      });
+    }
+
+    function showOffline() {
+      document.getElementById("rows").innerHTML = '<div class="empty">Activity Compassの保存機能に接続できません。<br />アプリを開き直してください。</div>';
+    }
+
+    function pollReminders() {
+      request("GET", "/v1/reminders", null, function(err, data) {
+        if (err || !data.items || !data.items.length) return;
+        var item = data.items[0];
+        document.getElementById("toastText").innerText = item.title;
+        document.getElementById("toast").style.display = "block";
+        request("POST", "/v1/reminders/" + encodeURIComponent(item.id) + "/seen", {trigger_key:item.trigger_key}, function(){});
+        setTimeout(function(){ document.getElementById("toast").style.display = "none"; }, 12000);
+      });
+    }
+
+    window.onload = function() {
+      try { window.resizeTo(1180, 760); window.moveTo((screen.availWidth-1180)/2, (screen.availHeight-760)/2); } catch(e) {}
+      loadRows();
+      loadProjectCatalog();
+      pollReminders();
+      setInterval(function(){ loadRows(); }, 15000);
+      setInterval(pollReminders, 30000);
+    };
+  </script>
+</body>
+</html>
