@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from activity_compass.db import Database
@@ -17,6 +18,62 @@ class DatabaseTests(unittest.TestCase):
         created = self.db.create_item({"title": "見積もりを確認", "entity_type": "task"})
         self.assertEqual(created["title"], "見積もりを確認")
         self.assertEqual(len(self.db.list_items("next")), 1)
+
+    def test_anime_and_manga_have_a_dedicated_view(self) -> None:
+        anime = self.db.create_item(
+            {
+                "title": "配信作品",
+                "entity_type": "anime",
+                "scheduled_at": "毎週月曜 24:00",
+            }
+        )
+        manga = self.db.create_item(
+            {
+                "title": "発売作品",
+                "entity_type": "manga",
+                "scheduled_at": "2026-08-03",
+            }
+        )
+        self.db.create_item({"title": "通常タスク", "entity_type": "task"})
+
+        media = self.db.list_items("anime_manga")
+
+        self.assertEqual({item["id"] for item in media}, {anime["id"], manga["id"]})
+        self.assertEqual(self.db.counts()["anime_manga"], 2)
+
+    def test_legacy_anime_project_is_migrated_and_removed(self) -> None:
+        project = self.db.create_item(
+            {
+                "title": "アニメ",
+                "entity_type": "project",
+                "details": "視聴するアニメを管理するプロジェクト。",
+            }
+        )
+        child = self.db.create_item(
+            {
+                "title": "作品名｜Netflix・毎週水曜24:00以降",
+                "entity_type": "task",
+                "details": "視聴タスク。",
+                "project_id": project["id"],
+            }
+        )
+        with self.db.connect() as connection:
+            connection.execute(
+                "DELETE FROM app_migrations WHERE name = ?",
+                ("2026-07-27-anime-manga-view",),
+            )
+
+        reopened = Database(self.db.path)
+        migrated = reopened.get_item(child["id"])
+
+        self.assertEqual(migrated["entity_type"], "anime")
+        self.assertEqual(migrated["title"], "作品名")
+        self.assertEqual(migrated["scheduled_at"], "毎週水曜24:00以降")
+        self.assertIn("配信サービス: Netflix", migrated["details"])
+        self.assertIsNone(migrated["project_id"])
+        self.assertEqual(reopened.list_items("projects"), [])
+        with self.assertRaises(KeyError):
+            reopened.get_item(project["id"])
 
     def test_sync_is_idempotent(self) -> None:
         payload = {
@@ -78,6 +135,105 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual(self.db.apply_automatic_rules(), 1)
         self.assertEqual(self.db.get_item(item["id"])["status"], "today")
+
+    def test_today_includes_in_progress_item_and_its_project_ancestors(self) -> None:
+        root = self.db.create_item(
+            {
+                "title": "親プロジェクト",
+                "entity_type": "project",
+                "status": "inbox",
+            }
+        )
+        project = self.db.create_item(
+            {
+                "title": "子プロジェクト",
+                "entity_type": "project",
+                "status": "inbox",
+                "parent_project_id": root["id"],
+            }
+        )
+        task = self.db.create_item(
+            {
+                "title": "進行中の作業",
+                "entity_type": "task",
+                "status": "in_progress",
+                "project_id": project["id"],
+            }
+        )
+
+        today_ids = {item["id"] for item in self.db.list_items("today")}
+
+        self.assertEqual(today_ids, {root["id"], project["id"], task["id"]})
+
+    def test_today_excludes_anime_even_when_in_progress_or_due(self) -> None:
+        in_progress = self.db.create_item(
+            {
+                "title": "進行中のアニメ",
+                "entity_type": "anime",
+                "status": "in_progress",
+            }
+        )
+        due = self.db.create_item(
+            {
+                "title": "配信日を過ぎたアニメ",
+                "entity_type": "anime",
+                "status": "today",
+                "scheduled_at": "2020-01-01",
+            }
+        )
+
+        today_ids = {item["id"] for item in self.db.list_items("today")}
+
+        self.assertNotIn(in_progress["id"], today_ids)
+        self.assertNotIn(due["id"], today_ids)
+
+    def test_today_includes_anime_only_on_its_streaming_weekday(self) -> None:
+        weekdays = ("月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜")
+        today_index = date.today().weekday()
+        today_anime = self.db.create_item(
+            {
+                "title": "本日配信のアニメ",
+                "entity_type": "anime",
+                "status": "in_progress",
+                "scheduled_at": f"毎週{weekdays[today_index]} 24:00",
+            }
+        )
+        other_day_anime = self.db.create_item(
+            {
+                "title": "別曜日配信のアニメ",
+                "entity_type": "anime",
+                "status": "in_progress",
+                "scheduled_at": f"毎週{weekdays[(today_index + 1) % 7]} 24:00",
+            }
+        )
+
+        today_ids = {item["id"] for item in self.db.list_items("today")}
+
+        self.assertIn(today_anime["id"], today_ids)
+        self.assertNotIn(other_day_anime["id"], today_ids)
+
+    def test_in_progress_excludes_anime(self) -> None:
+        anime = self.db.create_item(
+            {
+                "title": "進行中のアニメ",
+                "entity_type": "anime",
+                "status": "in_progress",
+            }
+        )
+        task = self.db.create_item(
+            {
+                "title": "進行中の作業",
+                "entity_type": "task",
+                "status": "in_progress",
+            }
+        )
+
+        in_progress_ids = {
+            item["id"] for item in self.db.list_items("in_progress")
+        }
+
+        self.assertEqual(in_progress_ids, {task["id"]})
+        self.assertNotIn(anime["id"], in_progress_ids)
 
     def test_in_progress_has_its_own_view(self) -> None:
         item = self.db.create_item(
