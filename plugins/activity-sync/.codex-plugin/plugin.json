@@ -1,6 +1,6 @@
 {
   "name": "activity-sync",
-  "version": "0.1.0+codex.20260726154052",
+  "version": "0.1.0+codex.20260727061352",
   "description": "Explicitly sync activity changes from the current conversation to Activity Compass.",
   "author": {
     "name": "Activity Compass"

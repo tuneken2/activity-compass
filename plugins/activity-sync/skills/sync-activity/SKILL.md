@@ -1,11 +1,13 @@
 ---
 name: sync-activity
-description: Extract activity changes from the current conversation and send them to Activity Compass through its MCP tool. Use only when the user explicitly says 「ここまでの活動情報を管理アプリに反映して」, 「活動管理に反映して」, or an equally explicit request that names both the current conversation/activity information and the management app. Do not invoke for generic words such as 「同期」「保存」「記録」「更新」, when discussing or quoting the trigger phrase, or when designing the sync feature itself.
+description: Extract activity changes from the current conversation and send them to Activity Compass (also called AC or アクコン) through its MCP tool. Use only when the user explicitly says 「ここまでの活動情報を管理アプリに反映して」, 「活動管理に反映して」, or an equally explicit request that names both the current conversation/activity information and the management app by its full name or alias. Do not invoke merely because AC or アクコン is mentioned, for generic words such as 「同期」「保存」「記録」「更新」, when discussing or quoting the trigger phrase, or when designing the sync feature itself.
 ---
 
 # Activity Compassへ同期
 
 現在の会話で新規作成・変更・確定された活動情報だけを抽出し、`activity-compass` MCPの `sync_activity` を1回呼ぶ。
+
+`AC`と`アクコン`は、Activity Compassの略称として扱う。
 
 ## 抽出する
 
