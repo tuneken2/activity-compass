@@ -808,53 +808,31 @@ class Database:
     def list_items(self, view: str = "all") -> list[dict[str, Any]]:
         clauses = {
             "today": """
-                i.id IN (
-                    WITH RECURSIVE today_tree(id, parent_project_id) AS (
-                        SELECT
-                            candidate.id,
-                            CASE
-                                WHEN candidate.entity_type = 'project'
-                                    THEN candidate.parent_project_id
-                                ELSE candidate.project_id
-                            END
-                        FROM items candidate
-                        WHERE candidate.status NOT IN ('done', 'cancelled')
-                          AND (
-                            (
-                              candidate.entity_type != 'anime'
-                              AND (
-                                candidate.status IN ('today', 'in_progress')
-                                OR date(candidate.due_at) <= date('now', 'localtime')
-                                OR date(candidate.scheduled_at) <= date('now', 'localtime')
-                              )
-                            )
-                            OR (
-                              candidate.entity_type = 'anime'
-                              AND instr(
-                                candidate.scheduled_at,
-                                CASE strftime('%w', 'now', 'localtime')
-                                  WHEN '0' THEN '日曜'
-                                  WHEN '1' THEN '月曜'
-                                  WHEN '2' THEN '火曜'
-                                  WHEN '3' THEN '水曜'
-                                  WHEN '4' THEN '木曜'
-                                  WHEN '5' THEN '金曜'
-                                  WHEN '6' THEN '土曜'
-                                END
-                              ) > 0
-                            )
-                          )
-
-                        UNION
-
-                        SELECT parent.id, parent.parent_project_id
-                        FROM items parent
-                        JOIN today_tree child
-                          ON parent.id = child.parent_project_id
-                        WHERE parent.entity_type = 'project'
-                          AND parent.status NOT IN ('done', 'cancelled')
+                i.status NOT IN ('done', 'cancelled')
+                AND (
+                  (
+                    i.entity_type != 'anime'
+                    AND (
+                      i.status IN ('today', 'in_progress')
+                      OR date(i.due_at) <= date('now', 'localtime')
+                      OR date(i.scheduled_at) <= date('now', 'localtime')
                     )
-                    SELECT id FROM today_tree
+                  )
+                  OR (
+                    i.entity_type = 'anime'
+                    AND instr(
+                      i.scheduled_at,
+                      CASE strftime('%w', 'now', 'localtime')
+                        WHEN '0' THEN '日曜'
+                        WHEN '1' THEN '月曜'
+                        WHEN '2' THEN '火曜'
+                        WHEN '3' THEN '水曜'
+                        WHEN '4' THEN '木曜'
+                        WHEN '5' THEN '金曜'
+                        WHEN '6' THEN '土曜'
+                      END
+                    ) > 0
+                  )
                 )
             """,
             "in_progress": "i.status = 'in_progress' AND i.entity_type != 'anime'",
@@ -868,11 +846,21 @@ class Database:
                 AND i.status NOT IN ('done', 'cancelled')
             """,
             "project_tasks": "i.entity_type != 'project' AND i.project_id IS NOT NULL",
+            "all_items": "i.entity_type != 'project'",
             "all": "1 = 1",
         }
         if view == "review":
             return self.list_reviews()
         where = clauses.get(view, clauses["all"])
+        if view in {
+            "today",
+            "in_progress",
+            "next",
+            "waiting",
+            "someday",
+            "done",
+        }:
+            where = f"({where}) AND i.entity_type != 'project'"
         with self.connect() as db:
             rows = db.execute(
                 f"""

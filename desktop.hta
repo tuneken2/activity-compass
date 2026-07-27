@@ -473,7 +473,7 @@
       var path;
       if (query) path = "/v1/items?q=" + encodeURIComponent(query);
       else if (view === "history") path = "/v1/history";
-      else path = "/v1/items?view=" + encodeURIComponent(view);
+      else path = "/v1/items?view=" + encodeURIComponent(view === "all" ? "all_items" : view);
       request("GET", path, null, function(err, data) {
         if (err) {
           showOffline();

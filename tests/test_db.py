@@ -136,7 +136,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.db.apply_automatic_rules(), 1)
         self.assertEqual(self.db.get_item(item["id"])["status"], "today")
 
-    def test_today_includes_in_progress_item_and_its_project_ancestors(self) -> None:
+    def test_today_excludes_project_ancestors(self) -> None:
         root = self.db.create_item(
             {
                 "title": "親プロジェクト",
@@ -163,7 +163,42 @@ class DatabaseTests(unittest.TestCase):
 
         today_ids = {item["id"] for item in self.db.list_items("today")}
 
-        self.assertEqual(today_ids, {root["id"], project["id"], task["id"]})
+        self.assertEqual(today_ids, {task["id"]})
+
+    def test_task_lists_show_projects_only_in_project_view(self) -> None:
+        statuses = ("today", "in_progress", "next", "waiting", "someday", "done")
+        projects = {}
+        tasks = {}
+        for status in statuses:
+            projects[status] = self.db.create_item(
+                {
+                    "title": f"{status} project",
+                    "entity_type": "project",
+                    "status": status,
+                }
+            )
+            tasks[status] = self.db.create_item(
+                {
+                    "title": f"{status} task",
+                    "entity_type": "task",
+                    "status": status,
+                }
+            )
+
+        for view in statuses:
+            item_ids = {item["id"] for item in self.db.list_items(view)}
+            self.assertIn(tasks[view]["id"], item_ids)
+            self.assertNotIn(projects[view]["id"], item_ids)
+
+        self.assertEqual(
+            {item["id"] for item in self.db.list_items("projects")},
+            {project["id"] for project in projects.values() if project["status"] != "done"},
+        )
+        self.assertTrue(
+            {item["id"] for item in self.db.list_items("all_items")}.isdisjoint(
+                {project["id"] for project in projects.values()}
+            )
+        )
 
     def test_today_excludes_anime_even_when_in_progress_or_due(self) -> None:
         in_progress = self.db.create_item(

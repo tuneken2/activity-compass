@@ -435,7 +435,9 @@ class ActivityCompassApp(tk.Tk):
         elif self.current_view == "history":
             data = self.db.list_history()
         else:
-            data = self.db.list_items(self.current_view)
+            data = self.db.list_items(
+                "all_items" if self.current_view == "all" else self.current_view
+            )
         project_tasks: dict[str, list[dict[str, Any]]] = {}
         if self.current_view == "projects" and not self.search_query:
             for task in self.db.list_items("project_tasks"):
