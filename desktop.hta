@@ -24,9 +24,11 @@
     .app { display: -ms-flexbox; display: flex; height: 100%; }
     .sidebar { width: 194px; flex: 0 0 194px; background: #17211d; color: #dce7e1; padding: 28px 0 20px; position: relative; }
     .brand { margin: 0 24px 34px; color: #fff; font-size: 20px; font-weight: 700; line-height: 1.06; letter-spacing: .04em; }
+    .create-nav { display: block; width: calc(100% - 28px); margin: 0 14px 16px; border: 1px solid #e58a67; padding: 11px 13px; background: #d4673d; color: #fff; cursor: pointer; font-size: 14px; font-weight: 700; text-align: left; box-shadow: 0 3px 10px rgba(0,0,0,.18); }
+    .create-nav:hover, .create-nav.active { background: #a84628; border-color: #f0a184; }
+    .create-nav-mark { display: inline-block; width: 22px; font-size: 18px; line-height: 12px; vertical-align: -1px; }
     .nav { display: block; width: 100%; border: 0; text-align: left; padding: 12px 22px; background: transparent; color: #dce7e1; cursor: pointer; font-size: 14px; }
     .nav:hover, .nav.active { background: #2b3833; color: #fff; }
-    .nav.exit { color: #d5a18e; }
     .nav-count { float: right; color: #84948c; }
     .motto { position: absolute; left: 24px; bottom: 20px; color: #84948c; font-size: 12px; line-height: 1.7; }
     .main { -ms-flex: 1; flex: 1; min-width: 0; padding: 24px 28px; }
@@ -38,11 +40,9 @@
     .refresh:hover { background: #ece9df; }
     .refresh:disabled { color: #8c928f; cursor: default; }
     .search + .refresh { margin-left: 8px; }
-    .quick { height: 51px; display: -ms-flexbox; display: flex; margin-bottom: 14px; border: 1px solid #dedcd3; background: #fff; }
-    .quick input { -ms-flex: 1; flex: 1; border: 0; padding: 0 15px; font-size: 15px; outline: none; }
-    .primary { border: 0; background: #d4673d; color: #fff; padding: 0 23px; margin: 5px; cursor: pointer; font-weight: 600; }
-    .primary:hover { background: #a84628; }
-    .workspace { display: -ms-flexbox; display: flex; height: calc(100% - 121px); gap: 12px; }
+    .exit-button { margin-left: 7px; padding: 8px 12px; border: 1px solid #c9c7be; background: #fff; color: #a84628; cursor: pointer; font-size: 12px; }
+    .exit-button:hover { border-color: #bd5b42; background: #c95c43; color: #fff; }
+    .workspace { display: -ms-flexbox; display: flex; height: calc(100% - 56px); gap: 12px; }
     .list-card { -ms-flex: 1; flex: 1; min-width: 420px; overflow: auto; background: #fff; border: 1px solid #dedcd3; }
     .detail { width: 310px; flex: 0 0 310px; overflow: auto; background: #fff; border: 1px solid #e4e1d8; padding: 20px; }
     .table-head, .row { display: -ms-flexbox; display: flex; -ms-flex-align: stretch; align-items: stretch; }
@@ -81,6 +81,10 @@
     .row-type-decision .type-pill { background: #eee7f2; color: #684b76; }
     .row-type-project .row-accent { background: #b15939; }
     .row-type-project .type-pill { background: #f5e6df; color: #8a482f; }
+    .row-type-anime .row-accent { background: #62528a; }
+    .row-type-anime .type-pill { background: #e9e6f5; color: #62528a; }
+    .row-type-manga .row-accent { background: #8a4f68; }
+    .row-type-manga .type-pill { background: #f4e7ec; color: #8a4f68; }
     .empty { padding: 56px 30px; text-align: center; color: #8c928f; line-height: 1.8; }
     .eyebrow { color: #6e7773; font-size: 11px; font-weight: 700; margin-bottom: 9px; }
     .detail h2 { margin: 0 0 8px; font-size: 19px; line-height: 1.35; }
@@ -95,6 +99,8 @@
     .action { border: 0; color: #fff; background: #3c7160; padding: 8px 11px; margin: 0 5px 6px 0; cursor: pointer; font-size: 12px; }
     .action.orange { background: #d4673d; }
     .action.gray { background: #77736b; }
+    .action.danger { background: #a84628; }
+    .action.danger:hover { background: #7f311d; }
     .toast { display: none; position: fixed; right: 24px; bottom: 24px; width: 340px; padding: 16px 18px; background: #17211d; color: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.25); z-index: 20; }
     .toast small { color: #9fb0a8; display: block; margin-bottom: 5px; }
     .badge { display: inline-block; padding: 3px 7px; border-radius: 10px; background: #f2e8e1; color: #a84628; font-size: 11px; }
@@ -118,13 +124,32 @@
     .confirm-execute { background: #d4673d; color: #fff; }
     .confirm-cancel:hover { background: #d8d4c9; }
     .confirm-execute:hover { background: #a84628; }
+    .create-page { display: none; height: 100%; overflow: auto; }
+    .create-page.visible { display: block; }
+    .create-page-header { display: -ms-flexbox; display: flex; -ms-flex-align: center; align-items: center; margin-bottom: 18px; }
+    .create-page-header p { margin: 5px 0 0; color: #6e7773; font-size: 13px; }
+    .create-card { max-width: 820px; padding: 24px 28px 26px; background: #fff; border: 1px solid #dedcd3; }
+    .create-grid { display: -ms-flexbox; display: flex; margin: 0 -8px; }
+    .create-column { width: 50%; padding: 0 8px; }
+    .create-card input, .create-card select, .create-card textarea { width: 100%; border: 1px solid #d7d4ca; background: #faf9f5; padding: 10px; margin: 4px 0 11px; outline: none; }
+    .create-card input:focus, .create-card select:focus, .create-card textarea:focus { border-color: #3c7160; background: #fff; }
+    .create-card textarea { height: 150px; resize: vertical; line-height: 1.55; }
+    .create-actions { margin-top: 8px; text-align: right; }
+    .create-actions button { border: 0; padding: 10px 22px; cursor: pointer; font-weight: 700; }
+    .create-cancel { margin-right: 8px; background: #e6e3da; color: #39443f; }
+    .create-submit { background: #d4673d; color: #fff; }
+    .create-submit:hover { background: #a84628; }
+    .create-error { min-height: 18px; color: #a84628; font-size: 12px; }
+    .conditional-field { display: none; }
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">ACTIVITY<br />COMPASS</div>
+      <button class="create-nav" id="createNav" type="button" onclick="showCreatePage()"><span class="create-nav-mark">＋</span>新しく追加</button>
       <button class="nav active" id="nav-projects" onclick="changeView('projects')">プロジェクト <span class="nav-count" id="count-projects"></span></button>
+      <button class="nav" id="nav-anime_manga" onclick="changeView('anime_manga')">アニメ・マンガ <span class="nav-count" id="count-anime_manga"></span></button>
       <button class="nav" id="nav-today" onclick="changeView('today')">今日 <span class="nav-count" id="count-today"></span></button>
       <button class="nav" id="nav-in_progress" onclick="changeView('in_progress')">進行中 <span class="nav-count" id="count-in_progress"></span></button>
       <button class="nav" id="nav-next" onclick="changeView('next')">次にやる <span class="nav-count" id="count-next"></span></button>
@@ -135,40 +160,109 @@
       <button class="nav" id="nav-history" onclick="changeView('history')">更新履歴</button>
       <button class="nav" id="nav-all" onclick="changeView('all')">すべて</button>
       <button class="nav" onclick="showExportConfirmation()">データを書き出す</button>
-      <button class="nav exit" onclick="exitApplication()">終了</button>
       <div class="motto">会話で決まったことを<br />頭の外へ。</div>
     </aside>
     <main class="main">
-      <div class="header">
-        <h1 id="heading">プロジェクト</h1>
-        <span class="result-count" id="resultCount"></span>
-        <input class="search" id="searchInput" placeholder="検索" onkeydown="if(event.keyCode===13){searchItems();}" />
-        <button class="refresh" id="refreshButton" onclick="manualRefresh()" title="最新のタスクを読み込む">↻ 更新</button>
+      <div id="browsePage" style="height:100%;">
+        <div class="header">
+          <h1 id="heading">プロジェクト</h1>
+          <span class="result-count" id="resultCount"></span>
+          <input class="search" id="searchInput" placeholder="検索" onkeydown="if(event.keyCode===13){searchItems();}" />
+          <button class="refresh" id="refreshButton" onclick="manualRefresh()" title="最新のタスクを読み込む">↻ 更新</button>
+          <button class="exit-button" type="button" onclick="exitApplication()" title="Activity Compassを完全に終了する">終了</button>
+        </div>
+        <div class="workspace">
+          <section class="list-card">
+            <div class="table-head">
+              <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div>
+            </div>
+            <div class="project-controls visible" id="projectControls">
+              <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
+                <option value="priority">優先度順</option>
+                <option value="parent">親プロジェクト順</option>
+                <option value="updated">更新順</option>
+              </select>
+              <span>プロジェクトをクリックすると、含まれる子タスクを表示します。</span>
+            </div>
+            <div id="rows"></div>
+          </section>
+          <aside class="detail" id="detail">
+            <div class="eyebrow">詳細</div>
+            <div class="empty">左の項目を選択してください。</div>
+          </aside>
+        </div>
       </div>
-      <div class="quick">
-        <input id="quickInput" placeholder="新しいタスクを追加" onkeydown="if(event.keyCode===13){quickAdd();}" />
-        <button class="primary" onclick="quickAdd()">追加</button>
-      </div>
-      <div class="workspace">
-        <section class="list-card">
-          <div class="table-head">
-            <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div>
+      <section class="create-page" id="createPage">
+        <div class="create-page-header">
+          <div>
+            <h1>新しく追加</h1>
+            <p>必要な情報をまとめて入力して、そのまま登録できます。</p>
           </div>
-          <div class="project-controls visible" id="projectControls">
-            <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
-              <option value="priority">優先度順</option>
-              <option value="parent">親プロジェクト順</option>
-              <option value="updated">更新順</option>
-            </select>
-            <span>プロジェクトをクリックすると、含まれる子タスクを表示します。</span>
+        </div>
+        <div class="create-card">
+          <label class="label" for="createTitle">タイトル</label>
+          <input id="createTitle" maxlength="200" placeholder="何をするか、ひと目で分かる名前" />
+          <div class="create-grid">
+            <div class="create-column">
+              <label class="label" for="createType">種類</label>
+              <select id="createType" onchange="updateCreateFields()">
+                <option value="task">タスク</option>
+                <option value="schedule">予定</option>
+                <option value="idea">アイデア</option>
+                <option value="waiting">待ち</option>
+                <option value="decision">決定</option>
+                <option value="project">プロジェクト</option>
+                <option value="anime">アニメ</option>
+                <option value="manga">マンガ</option>
+              </select>
+              <label class="label" for="createStatus">状態</label>
+              <select id="createStatus">
+                <option value="inbox">未整理</option>
+                <option value="today">今日</option>
+                <option value="next">次に</option>
+                <option value="in_progress">進行中</option>
+                <option value="waiting">待ち</option>
+                <option value="someday">いつか</option>
+              </select>
+              <div id="createProjectField">
+                <label class="label" for="createProject">所属プロジェクト</label>
+                <select id="createProject"><option value="">設定なし</option></select>
+              </div>
+              <div class="conditional-field" id="createProjectOnlyFields">
+                <label class="label" for="createCategory">カテゴリー（色は自動設定）</label>
+                <input id="createCategory" placeholder="例: 仕事、個人開発、学習" />
+                <label class="label" for="createParentProject">親プロジェクト</label>
+                <select id="createParentProject"><option value="">設定なし</option></select>
+                <label class="label" for="createProjectRank">同一優先度内の序列（1が先頭）</label>
+                <input id="createProjectRank" type="number" min="1" step="1" />
+              </div>
+            </div>
+            <div class="create-column">
+              <label class="label" for="createDue">期限（空欄なら無期限）</label>
+              <input id="createDue" placeholder="2026-08-05 18:00" />
+              <label class="label" for="createScheduled">予定日時</label>
+              <input id="createScheduled" placeholder="2026-08-03 10:00" />
+              <label class="label" for="createEffort">実装難易度 / 工数（1:小〜5:大）</label>
+              <select id="createEffort">
+                <option value="1">1</option><option value="2">2</option>
+                <option value="3" selected>3</option><option value="4">4</option><option value="5">5</option>
+              </select>
+              <label class="label" for="createPriority">優先度</label>
+              <select id="createPriority">
+                <option value="">自動で決める</option>
+                <option value="3">高</option><option value="2">中</option><option value="1">低</option>
+              </select>
+            </div>
           </div>
-          <div id="rows"></div>
-        </section>
-        <aside class="detail" id="detail">
-          <div class="eyebrow">詳細</div>
-          <div class="empty">左の項目を選択してください。</div>
-        </aside>
-      </div>
+          <label class="label" for="createDetails">詳細</label>
+          <textarea id="createDetails" placeholder="背景、完了条件、メモなど"></textarea>
+          <div class="create-error" id="createError"></div>
+          <div class="create-actions">
+            <button class="create-cancel" type="button" onclick="cancelCreate()">キャンセル</button>
+            <button class="create-submit" id="createSubmit" type="button" onclick="createItem()">追加する</button>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
   <div class="toast" id="toast"><small>そろそろです</small><strong id="toastText"></strong></div>
@@ -189,8 +283,8 @@
     var view = "projects";
     var rows = [];
     var selectedIndex = -1;
-    var labels = {today:"今日", in_progress:"進行中", next:"次にやる", waiting:"待ち", someday:"いつか", done:"完了", projects:"プロジェクト", review:"確認待ち", history:"更新履歴", all:"すべて"};
-    var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト"};
+    var labels = {today:"今日", in_progress:"進行中", next:"次にやる", waiting:"待ち", someday:"いつか", done:"完了", projects:"プロジェクト", anime_manga:"アニメ・マンガ", review:"確認待ち", history:"更新履歴", all:"すべて"};
+    var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト", anime:"アニメ", manga:"マンガ"};
     var statusLabels = {inbox:"未整理", today:"今日", next:"次に", in_progress:"進行中", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
     var allRows = [];
     var projectRoots = [];
@@ -247,8 +341,15 @@
       xhr.send(data ? JSON.stringify(data) : null);
     }
 
-    function changeView(next) {
+    function showBrowsePage() {
+      document.getElementById("browsePage").style.display = "block";
+      document.getElementById("createPage").className = "create-page";
+      document.getElementById("createNav").className = "create-nav";
+    }
+
+    function changeView(next, selectItemId) {
       flushDetailAutoSave();
+      showBrowsePage();
       view = next;
       activeQuery = "";
       selectedIndex = -1;
@@ -258,7 +359,113 @@
       var navs = document.querySelectorAll(".nav");
       for (var i=0; i<navs.length; i++) navs[i].className = "nav";
       document.getElementById("nav-" + view).className = "nav active";
-      loadRows();
+      loadRows(undefined, function() {
+        if (!selectItemId) return;
+        for (var rowIndex=0; rowIndex<rows.length; rowIndex++) {
+          if (rows[rowIndex].id === selectItemId) {
+            selectRow(rowIndex);
+            break;
+          }
+        }
+      });
+    }
+
+    function showCreatePage() {
+      flushDetailAutoSave();
+      document.getElementById("browsePage").style.display = "none";
+      document.getElementById("createPage").className = "create-page visible";
+      document.getElementById("createNav").className = "create-nav active";
+      var navs = document.querySelectorAll(".nav");
+      for (var i=0; i<navs.length; i++) navs[i].className = "nav";
+      loadProjectCatalog(function() {
+        populateCreateProjectOptions();
+      });
+      updateCreateFields();
+      document.getElementById("createTitle").focus();
+    }
+
+    function cancelCreate() {
+      resetCreateForm();
+      changeView(view);
+    }
+
+    function populateCreateProjectOptions() {
+      var html = projectOptions("", "");
+      document.getElementById("createProject").innerHTML = html;
+      document.getElementById("createParentProject").innerHTML = html;
+    }
+
+    function updateCreateFields() {
+      var entityType = document.getElementById("createType").value;
+      var isProject = entityType === "project";
+      document.getElementById("createProjectField").style.display = isProject ? "none" : "block";
+      document.getElementById("createProjectOnlyFields").style.display = isProject ? "block" : "none";
+    }
+
+    function resetCreateForm() {
+      document.getElementById("createTitle").value = "";
+      document.getElementById("createType").value = "task";
+      document.getElementById("createStatus").value = "inbox";
+      document.getElementById("createProject").value = "";
+      document.getElementById("createCategory").value = "";
+      document.getElementById("createParentProject").value = "";
+      document.getElementById("createProjectRank").value = "";
+      document.getElementById("createDue").value = "";
+      document.getElementById("createScheduled").value = "";
+      document.getElementById("createEffort").value = "3";
+      document.getElementById("createPriority").value = "";
+      document.getElementById("createDetails").value = "";
+      document.getElementById("createError").innerText = "";
+      document.getElementById("createSubmit").disabled = false;
+      document.getElementById("createSubmit").innerText = "追加する";
+      updateCreateFields();
+    }
+
+    function createItem() {
+      var title = document.getElementById("createTitle").value.replace(/^\s+|\s+$/g, "");
+      var error = document.getElementById("createError");
+      if (!title) {
+        error.innerText = "タイトルを入力してください。";
+        document.getElementById("createTitle").focus();
+        return;
+      }
+      var entityType = document.getElementById("createType").value;
+      var priority = document.getElementById("createPriority").value;
+      var payload = {
+        title: title,
+        entity_type: entityType,
+        status: document.getElementById("createStatus").value,
+        due_at: document.getElementById("createDue").value || null,
+        scheduled_at: document.getElementById("createScheduled").value || null,
+        effort: Number(document.getElementById("createEffort").value || 3),
+        details: document.getElementById("createDetails").value
+      };
+      if (priority) payload.priority = Number(priority);
+      if (entityType === "project") {
+        payload.category = document.getElementById("createCategory").value;
+        payload.parent_project_id = document.getElementById("createParentProject").value || null;
+        payload.project_rank = document.getElementById("createProjectRank").value || null;
+      } else {
+        payload.project_id = document.getElementById("createProject").value || null;
+      }
+      var submit = document.getElementById("createSubmit");
+      error.innerText = "";
+      submit.disabled = true;
+      submit.innerText = "追加中…";
+      request("POST", "/v1/items", payload, function(err, item) {
+        if (err) {
+          error.innerText = "追加できませんでした。入力内容を確認して、もう一度お試しください。";
+          submit.disabled = false;
+          submit.innerText = "追加する";
+          return;
+        }
+        var targetView = entityType === "project"
+          ? "projects"
+          : ((entityType === "anime" || entityType === "manga") ? "anime_manga" : "all");
+        resetCreateForm();
+        loadProjectCatalog();
+        changeView(targetView, item.id);
+      });
     }
 
     function loadRows(query, done) {
@@ -293,7 +500,7 @@
     }
 
     function updateCounts(counts) {
-      var keys = ["today","in_progress","next","waiting","someday","done","projects","review"];
+      var keys = ["today","in_progress","next","waiting","someday","done","projects","anime_manga","review"];
       for (var i=0; i<keys.length; i++) {
         document.getElementById("count-" + keys[i]).innerText = counts[keys[i]] || "";
       }
@@ -352,10 +559,14 @@
         var title = row.title || "削除済み項目";
         var type = isHistory || isReview ? row.action : (typeLabels[row.entity_type] || row.entity_type);
         var status = isHistory ? "履歴" : (isReview ? "確認待ち" : (statusLabels[row.status] || row.status));
-        var dateKind = isHistory ? "更新" : (isReview ? "受付" : (row.due_at ? "期限" : "予定"));
+        var dateKind = isHistory ? "更新" : (isReview ? "受付" :
+          (row.entity_type === "anime" ? "配信日" :
+          (row.entity_type === "manga" ? "発売日" : (row.due_at ? "期限" : "予定"))));
         var dateValue = isHistory || isReview
           ? (row.created_at || "")
-          : (row.due_at || row.scheduled_at || "");
+          : ((row.entity_type === "anime" || row.entity_type === "manga")
+            ? (row.scheduled_at || row.due_at || "")
+            : (row.due_at || row.scheduled_at || ""));
         var date = formatListDate(dateValue, dateKind);
         var rowType = isHistory || isReview ? "task" : (row.entity_type || "task");
         var priorityValue = Number(row.priority || 0);
@@ -448,15 +659,19 @@
           '<button class="action gray" onclick="resolveReview(false)">却下</button></div>';
       } else {
         html += '<label class="label">タイトル</label><input id="editTitle" value="' + escapeHtml(row.title) + '" />' +
-          '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project"], row.entity_type) + '</select>' +
+          '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project","anime","manga"], row.entity_type) + '</select>' +
           '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","in_progress","waiting","someday","done","cancelled"], row.status) + '</select>' +
           (row.entity_type === "project"
             ? '<label class="label">カテゴリー（色は自動設定）</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
               '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" value="' + escapeHtml(row.project_rank || "") + '" />' +
               '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
             : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
-          '<label class="label">期限（空欄なら無期限）</label><input id="editDue" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
-          '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />' +
+          ((row.entity_type === "anime" || row.entity_type === "manga")
+            ? '<input id="editDue" type="hidden" value="' + escapeHtml(row.due_at || "") + '" />' +
+              '<label class="label">' + (row.entity_type === "anime" ? "配信日・配信スケジュール" : "発売日") + '</label>' +
+              '<input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="' + (row.entity_type === "anime" ? "例: 毎週月曜 24:00" : "例: 2026-08-03") + '" />'
+            : '<label class="label">期限（空欄なら無期限）</label><input id="editDue" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
+              '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />') +
           '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
           '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" value="' + escapeHtml(row.priority || 2) + '" />' +
           '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
@@ -465,7 +680,8 @@
           '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
           '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
           '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
-          '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button></div>';
+          '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button>' +
+          '<button class="action danger" onclick="confirmDeleteItem()">削除</button></div>';
       }
       document.getElementById("detail").innerHTML = html;
       if (view !== "history" && view !== "review") {
@@ -495,20 +711,10 @@
       return html;
     }
 
-    function loadProjectCatalog() {
+    function loadProjectCatalog(done) {
       request("GET", "/v1/items?view=projects", null, function(err, data) {
         if (!err && data.items) projectCatalog = data.items;
-      });
-    }
-
-    function quickAdd() {
-      var input = document.getElementById("quickInput");
-      var title = input.value.replace(/^\s+|\s+$/g, "");
-      if (!title) return;
-      request("POST", "/v1/items", {entity_type:"task", title:title, status:"inbox"}, function(err) {
-        if (err) { alert(err.message); return; }
-        input.value = "";
-        loadRows();
+        if (done) done(err);
       });
     }
 
@@ -704,6 +910,22 @@
       });
     }
 
+    function confirmDeleteItem() {
+      if (selectedIndex < 0) return;
+      var row = rows[selectedIndex];
+      var message = "「" + row.title + "」を削除しますか？\nこの操作は元に戻せません。";
+      if (!confirm(message)) return;
+      flushDetailAutoSave();
+      request("POST", "/v1/items/" + encodeURIComponent(row.id) + "/delete", {}, function(err) {
+        if (err) { alert(err.message); return; }
+        selectedIndex = -1;
+        detailAutoSaveItemId = null;
+        clearDetail();
+        loadProjectCatalog();
+        loadRows();
+      });
+    }
+
     function resolveReview(approve) {
       if (selectedIndex < 0) return;
       var action = approve ? "approve" : "reject";
@@ -731,7 +953,7 @@
     }
 
     function exitApplication() {
-      if (!confirm("Activity Compassを終了しますか？")) return;
+      if (!confirm("Activity Compassを完全に終了しますか？\nバックグラウンド動作も停止します。")) return;
       var xhr = new XMLHttpRequest();
       xhr.open("POST", "http://127.0.0.1:8766/exit", true);
       xhr.setRequestHeader("Content-Type", "application/json");

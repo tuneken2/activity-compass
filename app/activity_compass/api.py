@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .db import Database
 
-API_SCHEMA_VERSION = 2
+API_SCHEMA_VERSION = 3
 
 
 class ActivityApiHandler(BaseHTTPRequestHandler):
@@ -94,6 +94,10 @@ class ActivityApiHandler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/v1/items/([^/]+)/status", self.path)
             if match:
                 self._json(200, self.db.update_status(match.group(1), body["status"]))
+                return
+            match = re.fullmatch(r"/v1/items/([^/]+)/delete", self.path)
+            if match:
+                self._json(200, self.db.delete_item(match.group(1)))
                 return
             match = re.fullmatch(r"/v1/items/([^/]+)", self.path)
             if match:

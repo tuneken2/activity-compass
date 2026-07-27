@@ -14,7 +14,16 @@ from typing import Any, Iterator
 
 
 DESTRUCTIVE_ACTIONS = {"complete", "cancel", "defer"}
-VALID_TYPES = {"task", "schedule", "idea", "waiting", "decision", "project"}
+VALID_TYPES = {
+    "task",
+    "schedule",
+    "idea",
+    "waiting",
+    "decision",
+    "project",
+    "anime",
+    "manga",
+}
 VALID_STATUSES = {
     "inbox",
     "today",
@@ -192,6 +201,11 @@ class Database:
                     UNIQUE(item_id, trigger_key),
                     FOREIGN KEY(item_id) REFERENCES items(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS app_migrations (
+                    name TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
                 """
             )
             self._ensure_column(db, "items", "project_id", "TEXT")
@@ -211,6 +225,17 @@ class Database:
                 "ON items(parent_project_id)"
             )
             self._backfill_project_links(db)
+            migration_name = "2026-07-27-anime-manga-view"
+            migration_applied = db.execute(
+                "SELECT 1 FROM app_migrations WHERE name = ?",
+                (migration_name,),
+            ).fetchone()
+            if not migration_applied:
+                self._migrate_anime_project(db)
+                db.execute(
+                    "INSERT INTO app_migrations (name, applied_at) VALUES (?, ?)",
+                    (migration_name, utc_now()),
+                )
             self._backfill_priorities(db)
             self._backfill_project_colors(db)
             priorities = db.execute(
@@ -218,6 +243,72 @@ class Database:
             ).fetchall()
             for row in priorities:
                 self._compact_project_ranks(db, int(row["priority"]))
+
+    @staticmethod
+    def _migrate_anime_project(db: sqlite3.Connection) -> None:
+        """Move the former アニメ project children into the dedicated media view."""
+        projects = db.execute(
+            """
+            SELECT id FROM items
+            WHERE entity_type = 'project' AND normalized_title = ?
+            """,
+            (normalize_title("アニメ"),),
+        ).fetchall()
+        for project in projects:
+            project_id = project["id"]
+            children = db.execute(
+                "SELECT id, title, details FROM items WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+            for child in children:
+                title = child["title"]
+                details = child["details"] or ""
+                scheduled_at = None
+                if "｜" in title:
+                    title, distribution = (part.strip() for part in title.split("｜", 1))
+                    if "・" in distribution:
+                        provider, scheduled_at = (
+                            part.strip() for part in distribution.split("・", 1)
+                        )
+                        provider_note = f"配信サービス: {provider}"
+                    else:
+                        provider_note = f"配信: {distribution}"
+                    details = "\n".join(
+                        part for part in (details, provider_note) if part
+                    )
+                db.execute(
+                    """
+                    UPDATE items
+                    SET entity_type = 'anime', title = ?, normalized_title = ?,
+                        details = ?, scheduled_at = COALESCE(scheduled_at, ?),
+                        project_id = NULL, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        title,
+                        normalize_title(title),
+                        details,
+                        scheduled_at,
+                        utc_now(),
+                        child["id"],
+                    ),
+                )
+
+            # Keep historical payloads, but detach foreign keys before removing
+            # the obsolete project record.
+            db.execute(
+                "UPDATE activity_events SET item_id = NULL WHERE item_id = ?",
+                (project_id,),
+            )
+            db.execute(
+                "UPDATE review_queue SET target_item_id = NULL WHERE target_item_id = ?",
+                (project_id,),
+            )
+            db.execute(
+                "DELETE FROM notification_log WHERE item_id = ?",
+                (project_id,),
+            )
+            db.execute("DELETE FROM items WHERE id = ?", (project_id,))
 
     @staticmethod
     def _normalize_category(value: Any) -> str:
@@ -717,16 +808,65 @@ class Database:
     def list_items(self, view: str = "all") -> list[dict[str, Any]]:
         clauses = {
             "today": """
-                i.status NOT IN ('done', 'cancelled') AND
-                (i.status = 'today' OR date(i.due_at) <= date('now', 'localtime')
-                 OR date(i.scheduled_at) <= date('now', 'localtime'))
+                i.id IN (
+                    WITH RECURSIVE today_tree(id, parent_project_id) AS (
+                        SELECT
+                            candidate.id,
+                            CASE
+                                WHEN candidate.entity_type = 'project'
+                                    THEN candidate.parent_project_id
+                                ELSE candidate.project_id
+                            END
+                        FROM items candidate
+                        WHERE candidate.status NOT IN ('done', 'cancelled')
+                          AND (
+                            (
+                              candidate.entity_type != 'anime'
+                              AND (
+                                candidate.status IN ('today', 'in_progress')
+                                OR date(candidate.due_at) <= date('now', 'localtime')
+                                OR date(candidate.scheduled_at) <= date('now', 'localtime')
+                              )
+                            )
+                            OR (
+                              candidate.entity_type = 'anime'
+                              AND instr(
+                                candidate.scheduled_at,
+                                CASE strftime('%w', 'now', 'localtime')
+                                  WHEN '0' THEN '日曜'
+                                  WHEN '1' THEN '月曜'
+                                  WHEN '2' THEN '火曜'
+                                  WHEN '3' THEN '水曜'
+                                  WHEN '4' THEN '木曜'
+                                  WHEN '5' THEN '金曜'
+                                  WHEN '6' THEN '土曜'
+                                END
+                              ) > 0
+                            )
+                          )
+
+                        UNION
+
+                        SELECT parent.id, parent.parent_project_id
+                        FROM items parent
+                        JOIN today_tree child
+                          ON parent.id = child.parent_project_id
+                        WHERE parent.entity_type = 'project'
+                          AND parent.status NOT IN ('done', 'cancelled')
+                    )
+                    SELECT id FROM today_tree
+                )
             """,
-            "in_progress": "i.status = 'in_progress'",
+            "in_progress": "i.status = 'in_progress' AND i.entity_type != 'anime'",
             "next": "i.status IN ('inbox', 'next')",
             "waiting": "i.status = 'waiting'",
             "someday": "i.status = 'someday'",
             "done": "i.status = 'done'",
             "projects": "i.entity_type = 'project' AND i.status NOT IN ('done', 'cancelled')",
+            "anime_manga": """
+                i.entity_type IN ('anime', 'manga')
+                AND i.status NOT IN ('done', 'cancelled')
+            """,
             "project_tasks": "i.entity_type != 'project' AND i.project_id IS NOT NULL",
             "all": "1 = 1",
         }
@@ -808,7 +948,7 @@ class Database:
                 SELECT e.*, i.title
                 FROM activity_events e
                 LEFT JOIN items i ON i.id = e.item_id
-                ORDER BY e.created_at DESC LIMIT ?
+                ORDER BY e.created_at DESC, e.rowid DESC LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
@@ -824,6 +964,7 @@ class Database:
             "done": len(self.list_items("done")),
             "review": len(self.list_reviews()),
             "projects": len(self.list_items("projects")),
+            "anime_manga": len(self.list_items("anime_manga")),
         }
 
     def sync(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1129,6 +1270,53 @@ class Database:
             self._refresh_priority(db, item_id)
             self._record_event(db, None, "manual_update", item_id, {"status": status})
         return self.get_item(item_id)
+
+    def delete_item(self, item_id: str) -> dict[str, Any]:
+        """Delete an item while keeping its history and dependants consistent."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM items WHERE id = ?", (item_id,)
+            ).fetchone()
+            if not row:
+                raise KeyError(item_id)
+
+            deleted = dict(row)
+            # Event and review records are historical data, so retain them but
+            # detach their foreign keys before removing the item itself.
+            db.execute(
+                "UPDATE activity_events SET item_id = NULL WHERE item_id = ?",
+                (item_id,),
+            )
+            db.execute(
+                "UPDATE review_queue SET target_item_id = NULL "
+                "WHERE target_item_id = ?",
+                (item_id,),
+            )
+            db.execute(
+                "DELETE FROM notification_log WHERE item_id = ?", (item_id,)
+            )
+            # Deleting a project must not leave its children pointing at an ID
+            # which no longer exists. Children remain available and unassigned.
+            db.execute(
+                "UPDATE items SET project_id = NULL, updated_at = ? "
+                "WHERE project_id = ?",
+                (utc_now(), item_id),
+            )
+            db.execute(
+                "UPDATE items SET parent_project_id = NULL, updated_at = ? "
+                "WHERE parent_project_id = ?",
+                (utc_now(), item_id),
+            )
+            db.execute("DELETE FROM items WHERE id = ?", (item_id,))
+            self._record_event(db, None, "delete", None, deleted)
+            if deleted["entity_type"] == "project":
+                self._compact_project_ranks(db, int(deleted["priority"] or 0))
+
+        return {
+            "id": item_id,
+            "title": deleted["title"],
+            "deleted": True,
+        }
 
     def update_item(self, item_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         validate_text_integrity(payload)

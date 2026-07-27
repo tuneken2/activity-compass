@@ -33,6 +33,7 @@ LABELS = {
     "someday": "いつか",
     "done": "完了",
     "projects": "プロジェクト",
+    "anime_manga": "アニメ・マンガ",
     "review": "確認待ち",
     "history": "更新履歴",
     "all": "すべて",
@@ -45,6 +46,8 @@ TYPE_LABELS = {
     "waiting": "待ち",
     "decision": "決定",
     "project": "プロジェクト",
+    "anime": "アニメ",
+    "manga": "マンガ",
 }
 
 STATUS_LABELS = {
@@ -65,6 +68,8 @@ TYPE_COLORS = {
     "waiting": ("#EFEAE5", "#6C5747"),
     "decision": ("#EEE7F2", "#684B76"),
     "project": ("#F5E6DF", "#8A482F"),
+    "anime": ("#E9E6F5", "#62528A"),
+    "manga": ("#F4E7EC", "#8A4F68"),
 }
 
 PRIORITY_COLORS = {
@@ -163,6 +168,7 @@ class ActivityCompassApp(tk.Tk):
         self.nav_buttons: dict[str, tk.Button] = {}
         for key in (
             "projects",
+            "anime_manga",
             "today",
             "in_progress",
             "next",
@@ -402,7 +408,10 @@ class ActivityCompassApp(tk.Tk):
         title = self.quick_entry.get().strip()
         if not title or title == "新しいタスクを追加":
             return
-        self.db.create_item({"entity_type": "task", "title": title, "status": "inbox"})
+        entity_type = "anime" if self.current_view == "anime_manga" else "task"
+        self.db.create_item(
+            {"entity_type": entity_type, "title": title, "status": "inbox"}
+        )
         self.quick_entry.delete(0, "end")
         self.refresh()
 
@@ -491,7 +500,12 @@ class ActivityCompassApp(tk.Tk):
                 else:
                     status = STATUS_LABELS.get(row["status"], row["status"])
                 date_value = row.get("due_at") or row.get("scheduled_at") or ""
-                date_kind = "期限" if row.get("due_at") else "予定"
+                if row["entity_type"] == "anime":
+                    date_kind = "配信日"
+                elif row["entity_type"] == "manga":
+                    date_kind = "発売日"
+                else:
+                    date_kind = "期限" if row.get("due_at") else "予定"
             self.rows[row_id] = row
             self._build_list_row(
                 row_id=row_id,
@@ -502,6 +516,7 @@ class ActivityCompassApp(tk.Tk):
                 date_value=date_value,
                 date_kind=date_kind,
                 alternate=index % 2 == 1,
+                is_project_child=is_project_child,
                 on_click=(
                     (lambda value=row_id: self._toggle_project(value))
                     if self.current_view == "projects"
@@ -528,10 +543,13 @@ class ActivityCompassApp(tk.Tk):
         date_value: str | None,
         date_kind: str,
         alternate: bool,
+        is_project_child: bool = False,
         on_click: Callable[[], None] | None = None,
     ) -> None:
         base_bg = COLORS["row_alt"] if alternate else COLORS["panel"]
         entity_type = row.get("entity_type", "task")
+        title_font_size = 11 if is_project_child else 12
+        row_height = 68 if is_project_child else 72
         badge_bg, badge_fg = TYPE_COLORS.get(
             entity_type, (COLORS["soft"], COLORS["muted"])
         )
@@ -559,7 +577,7 @@ class ActivityCompassApp(tk.Tk):
         item = tk.Frame(
             self.list_rows,
             bg=base_bg,
-            height=66,
+            height=row_height,
             highlightbackground=COLORS["line"],
             highlightthickness=0,
         )
@@ -610,10 +628,10 @@ class ActivityCompassApp(tk.Tk):
             text=title,
             bg=base_bg,
             fg=COLORS["text"],
-            font=("Segoe UI Semibold", 10),
+            font=("Segoe UI Semibold", title_font_size),
             anchor="w",
         )
-        title_label.pack(fill="x", pady=(9, 3))
+        title_label.pack(fill="x", pady=(10, 4))
         meta = tk.Frame(body, bg=base_bg)
         meta.pack(fill="x")
         kind_label = tk.Label(
@@ -743,6 +761,7 @@ class ActivityCompassApp(tk.Tk):
             self._action_button("次に", lambda: self.set_status(row["id"], "next"), "#3C7160")
             self._action_button("待ち", lambda: self.set_status(row["id"], "waiting"), "#77736B")
             self._action_button("いつか", lambda: self.set_status(row["id"], "someday"), "#77736B")
+            self._action_button("削除", lambda: self.delete_item(row["id"], row["title"]), "#A84628")
 
     def _action_button(self, text: str, command: Any, color: str) -> None:
         tk.Button(
@@ -767,6 +786,16 @@ class ActivityCompassApp(tk.Tk):
         if details == "詳細はまだありません。":
             details = ""
         self.db.update_item(item_id, {"details": details})
+        self.refresh()
+
+    def delete_item(self, item_id: str, title: str) -> None:
+        if not messagebox.askyesno(
+            "項目を削除",
+            f"「{title}」を削除しますか？\nこの操作は元に戻せません。",
+            parent=self,
+        ):
+            return
+        self.db.delete_item(item_id)
         self.refresh()
 
     def open_editor(self, item: dict[str, Any]) -> None:
@@ -799,7 +828,16 @@ class ActivityCompassApp(tk.Tk):
         pair.pack(fill="x")
         entity_type = ttk.Combobox(
             pair,
-            values=("task", "schedule", "idea", "waiting", "decision", "project"),
+            values=(
+                "task",
+                "schedule",
+                "idea",
+                "waiting",
+                "decision",
+                "project",
+                "anime",
+                "manga",
+            ),
             state="readonly",
         )
         entity_type.set(item.get("entity_type", "task"))
