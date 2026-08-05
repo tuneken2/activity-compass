@@ -47,6 +47,7 @@ EFFORT_HARD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PROJECT_RANK_PATTERN = re.compile(r"優先(?:順位|度)\s*[:：]?\s*(\d+)")
+ARCHIVE_AFTER_DAYS = 14
 CATEGORY_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 CATEGORY_COLORS = (
     "#3C7160",
@@ -217,6 +218,7 @@ class Database:
             self._ensure_column(db, "items", "category_color", "TEXT")
             self._ensure_column(db, "items", "project_rank", "INTEGER")
             self._ensure_column(db, "items", "project_color", "TEXT")
+            self._ensure_column(db, "items", "completed_at", "TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)"
             )
@@ -225,6 +227,7 @@ class Database:
                 "ON items(parent_project_id)"
             )
             self._backfill_project_links(db)
+            self._backfill_completed_at(db)
             migration_name = "2026-07-27-anime-manga-view"
             migration_applied = db.execute(
                 "SELECT 1 FROM app_migrations WHERE name = ?",
@@ -424,6 +427,16 @@ class Database:
                     """,
                     (project_id, item_id),
                 )
+
+    def _backfill_completed_at(self, db: sqlite3.Connection) -> None:
+        """Approximate a completion timestamp for legacy items marked done
+        before completed_at existed, so they age into the archive normally."""
+        db.execute(
+            """
+            UPDATE items SET completed_at = updated_at
+            WHERE status = 'done' AND completed_at IS NULL
+            """
+        )
 
     def _backfill_priorities(self, db: sqlite3.Connection) -> None:
         rows = db.execute(
@@ -764,8 +777,8 @@ class Database:
                     id, entity_type, title, normalized_title, details, status,
                     due_at, scheduled_at, priority, confidence, created_at, updated_at,
                     project_id, parent_project_id, effort, base_priority, priority_reason,
-                    category, category_color, project_rank, project_color
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, category_color, project_rank, project_color, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_id,
@@ -789,6 +802,7 @@ class Database:
                     category_color,
                     None,
                     project_color,
+                    now if status == "done" else None,
                 ),
             )
             if entity_type == "project":
@@ -839,14 +853,29 @@ class Database:
             "next": "i.status IN ('inbox', 'next')",
             "waiting": "i.status = 'waiting'",
             "someday": "i.status = 'someday'",
-            "done": "i.status = 'done'",
+            "done": f"""
+                i.status = 'done' AND (
+                    i.completed_at IS NULL
+                    OR julianday('now') - julianday(substr(i.completed_at, 1, 19))
+                       <= {ARCHIVE_AFTER_DAYS}
+                )
+            """,
+            "archive": f"""
+                i.status = 'done'
+                AND i.completed_at IS NOT NULL
+                AND julianday('now') - julianday(substr(i.completed_at, 1, 19))
+                    > {ARCHIVE_AFTER_DAYS}
+            """,
             "projects": "i.entity_type = 'project' AND i.status NOT IN ('done', 'cancelled')",
             "anime_manga": """
                 i.entity_type IN ('anime', 'manga')
                 AND i.status NOT IN ('done', 'cancelled')
             """,
-            "project_tasks": "i.entity_type != 'project' AND i.project_id IS NOT NULL",
-            "all_items": "i.entity_type != 'project'",
+            "project_tasks": """
+                i.entity_type != 'project' AND i.project_id IS NOT NULL
+                AND i.status NOT IN ('done', 'cancelled')
+            """,
+            "all_items": "i.entity_type != 'project' AND i.status != 'done'",
             "all": "1 = 1",
         }
         if view == "review":
@@ -859,6 +888,7 @@ class Database:
             "waiting",
             "someday",
             "done",
+            "archive",
         }:
             where = f"({where}) AND i.entity_type != 'project'"
         with self.connect() as db:
@@ -1110,6 +1140,9 @@ class Database:
         elif action == "defer":
             updates["status"] = event.get("status", "someday")
 
+        if "status" in updates:
+            updates["completed_at"] = now if updates["status"] == "done" else None
+
         if not updates:
             updates["details"] = target.get("details", "")
         updates["updated_at"] = now
@@ -1250,10 +1283,12 @@ class Database:
     def update_status(self, item_id: str, status: str) -> dict[str, Any]:
         if status not in VALID_STATUSES:
             raise ValueError("invalid status")
+        now = utc_now()
+        completed_at = now if status == "done" else None
         with self.connect() as db:
             db.execute(
-                "UPDATE items SET status = ?, updated_at = ? WHERE id = ?",
-                (status, utc_now(), item_id),
+                "UPDATE items SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?",
+                (status, completed_at, now, item_id),
             )
             self._refresh_priority(db, item_id)
             self._record_event(db, None, "manual_update", item_id, {"status": status})
@@ -1346,6 +1381,10 @@ class Database:
                 raise ValueError("title is required")
             updates["title"] = title
             updates["normalized_title"] = normalize_title(title)
+        if "status" in updates:
+            updates["completed_at"] = (
+                utc_now() if updates["status"] == "done" else None
+            )
         updates["updated_at"] = utc_now()
         columns = ", ".join(f"{key} = ?" for key in updates)
         with self.connect() as db:

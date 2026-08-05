@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from activity_compass.db import Database
@@ -294,6 +294,97 @@ class DatabaseTests(unittest.TestCase):
         )
 
         self.assertEqual([row["id"] for row in self.db.list_items("done")], [done["id"]])
+
+    def test_done_items_move_to_archive_after_two_weeks(self) -> None:
+        recent = self.db.create_item(
+            {"title": "最近完了した作業", "entity_type": "task", "status": "done"}
+        )
+        old = self.db.create_item(
+            {"title": "昔完了した作業", "entity_type": "task", "status": "done"}
+        )
+        old_completed_at = (
+            datetime.now(timezone.utc) - timedelta(days=20)
+        ).isoformat(timespec="seconds")
+        with self.db.connect() as connection:
+            connection.execute(
+                "UPDATE items SET completed_at = ? WHERE id = ?",
+                (old_completed_at, old["id"]),
+            )
+
+        self.assertEqual(
+            [row["id"] for row in self.db.list_items("done")], [recent["id"]]
+        )
+        self.assertEqual(
+            [row["id"] for row in self.db.list_items("archive")], [old["id"]]
+        )
+        self.assertEqual(self.db.counts()["done"], 1)
+
+    def test_reopening_an_archived_item_clears_its_completed_at(self) -> None:
+        item = self.db.create_item(
+            {"title": "やり直す作業", "entity_type": "task", "status": "done"}
+        )
+        old_completed_at = (
+            datetime.now(timezone.utc) - timedelta(days=20)
+        ).isoformat(timespec="seconds")
+        with self.db.connect() as connection:
+            connection.execute(
+                "UPDATE items SET completed_at = ? WHERE id = ?",
+                (old_completed_at, item["id"]),
+            )
+        self.assertEqual(len(self.db.list_items("archive")), 1)
+
+        self.db.update_status(item["id"], "next")
+
+        self.assertIsNone(self.db.get_item(item["id"])["completed_at"])
+        self.assertEqual(self.db.list_items("archive"), [])
+        self.assertEqual(self.db.list_items("done"), [])
+
+    def test_all_items_view_excludes_done_items(self) -> None:
+        done = self.db.create_item(
+            {"title": "完了済みタスク", "entity_type": "task", "status": "done"}
+        )
+        active = self.db.create_item(
+            {"title": "未完了タスク", "entity_type": "task"}
+        )
+
+        all_ids = {row["id"] for row in self.db.list_items("all_items")}
+
+        self.assertNotIn(done["id"], all_ids)
+        self.assertIn(active["id"], all_ids)
+
+    def test_project_tasks_view_excludes_done_and_cancelled_children(self) -> None:
+        project = self.db.create_item(
+            {"title": "完了タスクを含むプロジェクト", "entity_type": "project"}
+        )
+        active = self.db.create_item(
+            {
+                "title": "進行中の子タスク",
+                "entity_type": "task",
+                "project_id": project["id"],
+            }
+        )
+        self.db.create_item(
+            {
+                "title": "完了済みの子タスク",
+                "entity_type": "task",
+                "project_id": project["id"],
+                "status": "done",
+            }
+        )
+        self.db.create_item(
+            {
+                "title": "取消済みの子タスク",
+                "entity_type": "task",
+                "project_id": project["id"],
+                "status": "cancelled",
+            }
+        )
+
+        project_task_ids = {
+            row["id"] for row in self.db.list_items("project_tasks")
+        }
+
+        self.assertEqual(project_task_ids, {active["id"]})
 
     def test_counts_include_in_progress_and_done(self) -> None:
         self.db.create_item(

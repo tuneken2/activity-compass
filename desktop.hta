@@ -184,6 +184,14 @@
               </select>
               <span>プロジェクトをクリックすると、含まれる子タスクを表示します。</span>
             </div>
+            <div class="project-controls" id="doneControls">
+              <button class="project-filter" onclick="changeView('archive')">アーカイブを表示</button>
+              <span>完了してから14日経過した項目は自動的にアーカイブへ移動します。</span>
+            </div>
+            <div class="project-controls" id="archiveControls">
+              <button class="project-filter" onclick="changeView('done')">完了に戻る</button>
+              <span>アーカイブは、記録として保持されている完了済みの項目です。</span>
+            </div>
             <div id="rows"></div>
           </section>
           <aside class="detail" id="detail">
@@ -283,7 +291,7 @@
     var view = "projects";
     var rows = [];
     var selectedIndex = -1;
-    var labels = {today:"今日", in_progress:"進行中", next:"次にやる", waiting:"待ち", someday:"いつか", done:"完了", projects:"プロジェクト", anime_manga:"アニメ・マンガ", review:"確認待ち", history:"更新履歴", all:"すべて"};
+    var labels = {today:"今日", in_progress:"進行中", next:"次にやる", waiting:"待ち", someday:"いつか", done:"完了", archive:"アーカイブ", projects:"プロジェクト", anime_manga:"アニメ・マンガ", review:"確認待ち", history:"更新履歴", all:"すべて"};
     var typeLabels = {task:"タスク", schedule:"予定", idea:"アイデア", waiting:"待ち", decision:"決定", project:"プロジェクト", anime:"アニメ", manga:"マンガ"};
     var statusLabels = {inbox:"未整理", today:"今日", next:"次に", in_progress:"進行中", waiting:"待ち", someday:"いつか", done:"完了", cancelled:"取消"};
     var allRows = [];
@@ -356,9 +364,12 @@
       document.getElementById("searchInput").value = "";
       document.getElementById("heading").innerText = labels[view];
       document.getElementById("projectControls").className = view === "projects" ? "project-controls visible" : "project-controls";
+      document.getElementById("doneControls").className = view === "done" ? "project-controls visible" : "project-controls";
+      document.getElementById("archiveControls").className = view === "archive" ? "project-controls visible" : "project-controls";
       var navs = document.querySelectorAll(".nav");
       for (var i=0; i<navs.length; i++) navs[i].className = "nav";
-      document.getElementById("nav-" + view).className = "nav active";
+      var navButton = document.getElementById("nav-" + (view === "archive" ? "done" : view));
+      if (navButton) navButton.className = "nav active";
       loadRows(undefined, function() {
         if (!selectItemId) return;
         for (var rowIndex=0; rowIndex<rows.length; rowIndex++) {
@@ -677,10 +688,10 @@
           '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="save-state" id="detailSaveState">自動保存: 保存済み</div>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
-          '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
           '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
           '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
           '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button>' +
+          '<button class="action orange" onclick="setStatus(\'done\')">完了</button>' +
           '<button class="action danger" onclick="confirmDeleteItem()">削除</button></div>';
       }
       document.getElementById("detail").innerHTML = html;
