@@ -19,7 +19,7 @@ class ListCompleteButtonTests(unittest.TestCase):
     def test_row_shows_a_complete_button_unless_excluded(self) -> None:
         self.assertIn(
             'var showComplete = !isProject && !isHistory && !isReview '
-            '&& view !== "done" && view !== "archive";',
+            '&& view !== "done" && view !== "archive" && view !== "anime_manga";',
             self.html,
         )
 

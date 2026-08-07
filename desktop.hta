@@ -51,6 +51,7 @@
     .head-priority { width: 76px; text-align: center; }
     .head-date { width: 112px; text-align: right; }
     .head-done { width: 70px; text-align: center; }
+    .head-link { width: 84px; text-align: center; }
     .row { position: relative; min-height: 66px; border-bottom: 1px solid #ebe9e2; cursor: pointer; background: #fff; }
     .row:nth-child(even) { background: #fafaf7; }
     .row:hover { background: #f7f2ed; }
@@ -72,6 +73,9 @@
     .c-done { width: 70px; -ms-flex: 0 0 70px; flex: 0 0 70px; padding: 15px 10px 0; text-align: center; }
     .complete-button { border: 1px solid #3c7160; background: #fff; color: #3c7160; padding: 5px 10px; cursor: pointer; font-size: 11px; font-weight: 600; }
     .complete-button:hover { background: #3c7160; color: #fff; }
+    .c-link { width: 84px; -ms-flex: 0 0 84px; flex: 0 0 84px; padding: 15px 8px 0; text-align: center; }
+    .link-button { border: 1px solid #d4673d; background: #fff; color: #d4673d; padding: 5px 10px; cursor: pointer; font-size: 11px; font-weight: 600; }
+    .link-button:hover { background: #d4673d; color: #fff; }
     .date-main { display: block; color: #26322d; font-size: 13px; font-weight: 600; line-height: 20px; }
     .date-context { display: block; color: #858c88; font-size: 10px; line-height: 17px; }
     .overdue .date-main { color: #a84628; }
@@ -176,7 +180,7 @@
         <div class="workspace">
           <section class="list-card">
             <div class="table-head">
-              <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div><div class="head-done"></div>
+              <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div><div class="head-done"></div><div class="head-link"></div>
             </div>
             <div class="project-controls visible" id="projectControls">
               <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
@@ -615,10 +619,14 @@
         if (isProject) status = "子タスク " + childCount + "件 · " + (expandedProjects[row.id] ? "クリックで閉じる" : "クリックで展開");
         var projectClass = isProject ? " project-row" + (expandedProjects[row.id] ? " expanded" : "") : (isProjectOverview ? " project-child" : "");
         var clickAction = isProject ? "toggleProject(" + i + ")" : "selectRow(" + i + ")";
-        var showComplete = !isProject && !isHistory && !isReview && view !== "done" && view !== "archive";
+        var showComplete = !isProject && !isHistory && !isReview && view !== "done" && view !== "archive" && view !== "anime_manga";
         var completeColumn = showComplete
           ? '<div class="c-done"><button class="complete-button" onclick="event.stopPropagation(); confirmCompleteRow(' + i + ')">完了</button></div>'
           : '<div class="c-done"></div>';
+        var showLink = view === "anime_manga" && !query && !isProject && !isHistory && !isReview;
+        var linkColumn = (showLink && row.link_url)
+          ? '<div class="c-link"><button class="link-button" onclick="event.stopPropagation(); openLinkForRow(' + i + ')">開く</button></div>'
+          : '<div class="c-link"></div>';
         html += '<div class="row row-type-' + escapeHtml(rowType) + projectClass + (date.overdue ? ' overdue' : '') + '" id="row-' + i + '" onclick="' + clickAction + '">' +
           '<div class="row-accent"' + accentStyle + '></div><div class="row-main">' +
           '<div class="c-title">' + titlePrefix + escapeHtml(title) + '</div>' +
@@ -627,7 +635,7 @@
           '<span class="status-text">' + escapeHtml(status) + '</span>' +
           '</div></div><div class="c-priority' + priorityClass + '" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
           '<div class="c-date"><span class="date-main">' + escapeHtml(date.main) + '</span>' +
-          '<span class="date-context">' + escapeHtml(date.context) + '</span></div>' + completeColumn + '</div>';
+          '<span class="date-context">' + escapeHtml(date.context) + '</span></div>' + completeColumn + linkColumn + '</div>';
       }
       if (!rows.length) html = view === "projects" && !query
         ? '<div class="empty">プロジェクトはまだありません。<br />種類を「プロジェクト」にした項目がここに並びます。</div>'
@@ -718,7 +726,6 @@
           '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="save-state" id="detailSaveState">自動保存: 保存済み</div>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
-          (row.link_url ? '<button class="action orange" onclick="openLink()">' + escapeHtml(row.link_service ? row.link_service + "で開く" : "作品ページを開く") + '</button>' : '') +
           '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
           '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
           '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button>' +
@@ -981,9 +988,9 @@
     // it into the Run dialog: the registered handler for the URL's scheme
     // opens it, whether that's the default browser or a native app that has
     // registered its own protocol (e.g. a streaming app's deep link).
-    function openLink() {
-      if (selectedIndex < 0) return;
-      var url = rows[selectedIndex].link_url;
+    function openLinkForRow(index) {
+      var row = rows[index];
+      var url = row && row.link_url;
       if (!url) return;
       try {
         var shell = new ActiveXObject("WScript.Shell");
