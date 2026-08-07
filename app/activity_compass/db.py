@@ -48,6 +48,8 @@ EFFORT_HARD_PATTERN = re.compile(
 )
 PROJECT_RANK_PATTERN = re.compile(r"優先(?:順位|度)\s*[:：]?\s*(\d+)")
 ARCHIVE_AFTER_DAYS = 14
+REMINDER_TIME_PATTERN = re.compile(r"(\d{1,2}):(\d{2})")
+DEFAULT_REMINDER_HOUR = 10
 CATEGORY_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 CATEGORY_COLORS = (
     "#3C7160",
@@ -827,8 +829,7 @@ class Database:
                   (
                     i.entity_type != 'anime'
                     AND (
-                      i.status IN ('today', 'in_progress')
-                      OR date(i.due_at) <= date('now', 'localtime')
+                      date(i.due_at) <= date('now', 'localtime')
                       OR date(i.scheduled_at) <= date('now', 'localtime')
                     )
                   )
@@ -1602,27 +1603,77 @@ class Database:
             ).fetchone()
         return int(row["token"])
 
+    @staticmethod
+    def _resolve_reminder_trigger(value: Any) -> datetime | None:
+        """Resolve a due/scheduled value into a concrete notification instant.
+
+        Returns None when there is no input, or the input has no real date
+        component (e.g. anime's free-text weekday schedules such as
+        "毎週月曜 24:00"). A date without a clock time defaults to 10:00.
+        """
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        day = Database._parse_date(text)
+        if not day:
+            return None
+        hour, minute = DEFAULT_REMINDER_HOUR, 0
+        time_match = REMINDER_TIME_PATTERN.search(text)
+        if time_match:
+            candidate_hour = int(time_match.group(1))
+            candidate_minute = int(time_match.group(2))
+            if 0 <= candidate_hour <= 23 and 0 <= candidate_minute <= 59:
+                hour, minute = candidate_hour, candidate_minute
+        return datetime(day.year, day.month, day.day, hour, minute)
+
     def due_notifications(self) -> list[dict[str, Any]]:
+        """Return items whose due date and/or scheduled date have arrived.
+
+        due_at and scheduled_at are evaluated independently, so an item with
+        both set can produce two separate reminders (each with its own
+        trigger_key), rather than being collapsed into a single notification.
+        """
+        now = datetime.now()
         with self.connect() as db:
             rows = db.execute(
                 """
-                SELECT i.*,
-                  COALESCE(i.scheduled_at, i.due_at) AS trigger_key
-                FROM items i
-                WHERE i.status NOT IN ('done', 'cancelled')
-                  AND COALESCE(i.scheduled_at, i.due_at) IS NOT NULL
-                  AND datetime(COALESCE(i.scheduled_at, i.due_at))
-                      <= datetime('now', 'localtime')
-                  AND NOT EXISTS (
-                    SELECT 1 FROM notification_log n
-                    WHERE n.item_id = i.id
-                      AND n.trigger_key = COALESCE(i.scheduled_at, i.due_at)
-                  )
-                ORDER BY COALESCE(i.scheduled_at, i.due_at)
-                LIMIT 5
+                SELECT * FROM items
+                WHERE status NOT IN ('done', 'cancelled')
+                  AND (due_at IS NOT NULL OR scheduled_at IS NOT NULL)
                 """
             ).fetchall()
-        return [dict(row) for row in rows]
+            candidates: list[dict[str, Any]] = []
+            for row in rows:
+                item = dict(row)
+                for kind, value in (
+                    ("due", item.get("due_at")),
+                    ("scheduled", item.get("scheduled_at")),
+                ):
+                    trigger_at = self._resolve_reminder_trigger(value)
+                    if not trigger_at or trigger_at > now:
+                        continue
+                    trigger_key = f"{kind}:{trigger_at.strftime('%Y-%m-%dT%H:%M')}"
+                    already_notified = db.execute(
+                        """
+                        SELECT 1 FROM notification_log
+                        WHERE item_id = ? AND trigger_key = ?
+                        """,
+                        (item["id"], trigger_key),
+                    ).fetchone()
+                    if already_notified:
+                        continue
+                    candidates.append(
+                        {
+                            **item,
+                            "trigger_key": trigger_key,
+                            "trigger_kind": kind,
+                            "trigger_at": trigger_at.strftime("%Y-%m-%dT%H:%M"),
+                        }
+                    )
+        candidates.sort(key=lambda entry: entry["trigger_at"])
+        return candidates[:5]
 
     def mark_notified(self, item_id: str, trigger_key: str) -> None:
         with self.connect() as db:

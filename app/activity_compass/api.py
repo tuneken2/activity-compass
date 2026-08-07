@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .db import Database
 
-API_SCHEMA_VERSION = 3
+API_SCHEMA_VERSION = 4
 
 
 class ActivityApiHandler(BaseHTTPRequestHandler):
@@ -64,9 +64,6 @@ class ActivityApiHandler(BaseHTTPRequestHandler):
         if parsed.path == "/v1/changes":
             self._json(200, {"token": self.db.change_token()})
             return
-        if parsed.path == "/v1/reminders":
-            self._json(200, {"items": self.db.due_notifications()})
-            return
         self._json(404, {"error": "not_found"})
 
     def do_OPTIONS(self) -> None:
@@ -106,11 +103,6 @@ class ActivityApiHandler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/v1/reviews/([^/]+)/(approve|reject)", self.path)
             if match:
                 self._json(200, self.db.resolve_review(match.group(1), match.group(2) == "approve"))
-                return
-            match = re.fullmatch(r"/v1/reminders/([^/]+)/seen", self.path)
-            if match:
-                self.db.mark_notified(match.group(1), body["trigger_key"])
-                self._json(200, {"status": "ok"})
                 return
             self._json(404, {"error": "not_found"})
         except (ValueError, KeyError, json.JSONDecodeError) as exc:

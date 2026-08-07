@@ -110,7 +110,7 @@ class ApiEncodingTests(unittest.TestCase):
         status, body, _ = self.get_json("/health")
 
         self.assertEqual(status, 200)
-        self.assertEqual(body["api_schema_version"], 3)
+        self.assertEqual(body["api_schema_version"], 4)
 
 
 if __name__ == "__main__":

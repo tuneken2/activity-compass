@@ -158,12 +158,59 @@ class DatabaseTests(unittest.TestCase):
                 "entity_type": "task",
                 "status": "in_progress",
                 "project_id": project["id"],
+                "due_at": "2020-01-01",
             }
         )
 
         today_ids = {item["id"] for item in self.db.list_items("today")}
 
         self.assertEqual(today_ids, {task["id"]})
+
+    def test_today_excludes_tasks_with_no_due_or_scheduled_date(self) -> None:
+        no_date_but_marked_today = self.db.create_item(
+            {"title": "無期限の今日タスク", "entity_type": "task", "status": "today"}
+        )
+        no_date_in_progress = self.db.create_item(
+            {"title": "無期限の進行中タスク", "entity_type": "task", "status": "in_progress"}
+        )
+
+        today_ids = {item["id"] for item in self.db.list_items("today")}
+
+        self.assertNotIn(no_date_but_marked_today["id"], today_ids)
+        self.assertNotIn(no_date_in_progress["id"], today_ids)
+
+    def test_today_includes_due_today_and_overdue_but_not_future(self) -> None:
+        overdue = self.db.create_item(
+            {"title": "期限切れタスク", "entity_type": "task", "due_at": "2020-01-01"}
+        )
+        due_today = self.db.create_item(
+            {
+                "title": "本日期限タスク",
+                "entity_type": "task",
+                "due_at": date.today().isoformat(),
+            }
+        )
+        scheduled_today = self.db.create_item(
+            {
+                "title": "本日予定タスク",
+                "entity_type": "task",
+                "scheduled_at": date.today().isoformat(),
+            }
+        )
+        future = self.db.create_item(
+            {
+                "title": "先の予定タスク",
+                "entity_type": "task",
+                "due_at": (date.today() + timedelta(days=3)).isoformat(),
+            }
+        )
+
+        today_ids = {item["id"] for item in self.db.list_items("today")}
+
+        self.assertIn(overdue["id"], today_ids)
+        self.assertIn(due_today["id"], today_ids)
+        self.assertIn(scheduled_today["id"], today_ids)
+        self.assertNotIn(future["id"], today_ids)
 
     def test_task_lists_show_projects_only_in_project_view(self) -> None:
         statuses = ("today", "in_progress", "next", "waiting", "someday", "done")
@@ -182,6 +229,10 @@ class DatabaseTests(unittest.TestCase):
                     "title": f"{status} task",
                     "entity_type": "task",
                     "status": status,
+                    # "today" now requires an actual due/scheduled date; a
+                    # past date keeps this task visible in every view under
+                    # test without affecting the others.
+                    "due_at": "2020-01-01",
                 }
             )
 
@@ -734,6 +785,95 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(result["updated"], 1)
         self.assertEqual(updated["category"], "学習")
         self.assertEqual(updated["category_color"], "#657547")
+
+    def test_reminder_trigger_defaults_missing_time_to_ten_am(self) -> None:
+        trigger = Database._resolve_reminder_trigger("2026-08-05")
+        self.assertEqual(trigger, datetime(2026, 8, 5, 10, 0))
+
+    def test_reminder_trigger_uses_explicit_time_when_present(self) -> None:
+        trigger = Database._resolve_reminder_trigger("2026-08-05 18:30")
+        self.assertEqual(trigger, datetime(2026, 8, 5, 18, 30))
+
+    def test_reminder_trigger_skips_missing_input(self) -> None:
+        self.assertIsNone(Database._resolve_reminder_trigger(None))
+        self.assertIsNone(Database._resolve_reminder_trigger(""))
+
+    def test_reminder_trigger_skips_text_without_a_real_date(self) -> None:
+        self.assertIsNone(Database._resolve_reminder_trigger("毎週月曜 24:00"))
+
+    def test_due_and_scheduled_notify_as_separate_reminders(self) -> None:
+        past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        item = self.db.create_item(
+            {
+                "title": "期限も予定もある作業",
+                "entity_type": "task",
+                "due_at": past,
+                "scheduled_at": past,
+            }
+        )
+
+        reminders = [
+            r for r in self.db.due_notifications() if r["id"] == item["id"]
+        ]
+
+        self.assertEqual({r["trigger_kind"] for r in reminders}, {"due", "scheduled"})
+        self.assertEqual(len({r["trigger_key"] for r in reminders}), 2)
+
+    def test_due_notification_skips_future_dates_and_dateless_schedules(self) -> None:
+        future = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        future_item = self.db.create_item(
+            {"title": "未来の予定", "entity_type": "task", "due_at": future}
+        )
+        no_date_item = self.db.create_item(
+            {
+                "title": "配信中アニメ",
+                "entity_type": "anime",
+                "scheduled_at": "毎週月曜 24:00",
+            }
+        )
+
+        ids = {r["id"] for r in self.db.due_notifications()}
+
+        self.assertNotIn(future_item["id"], ids)
+        self.assertNotIn(no_date_item["id"], ids)
+
+    def test_due_notification_excludes_done_and_cancelled_items(self) -> None:
+        past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        done_item = self.db.create_item(
+            {
+                "title": "完了済みで期限超過",
+                "entity_type": "task",
+                "due_at": past,
+                "status": "done",
+            }
+        )
+        cancelled_item = self.db.create_item(
+            {
+                "title": "取消済みで期限超過",
+                "entity_type": "task",
+                "due_at": past,
+                "status": "cancelled",
+            }
+        )
+
+        ids = {r["id"] for r in self.db.due_notifications()}
+
+        self.assertNotIn(done_item["id"], ids)
+        self.assertNotIn(cancelled_item["id"], ids)
+
+    def test_marking_a_reminder_notified_prevents_it_from_repeating(self) -> None:
+        past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        item = self.db.create_item(
+            {"title": "確認済みにする作業", "entity_type": "task", "due_at": past}
+        )
+        reminder = next(
+            r for r in self.db.due_notifications() if r["id"] == item["id"]
+        )
+
+        self.db.mark_notified(item["id"], reminder["trigger_key"])
+
+        remaining = [r for r in self.db.due_notifications() if r["id"] == item["id"]]
+        self.assertEqual(remaining, [])
 
 
 if __name__ == "__main__":

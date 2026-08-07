@@ -50,6 +50,7 @@
     .head-title { -ms-flex: 1; flex: 1; }
     .head-priority { width: 76px; text-align: center; }
     .head-date { width: 112px; text-align: right; }
+    .head-done { width: 70px; text-align: center; }
     .row { position: relative; min-height: 66px; border-bottom: 1px solid #ebe9e2; cursor: pointer; background: #fff; }
     .row:nth-child(even) { background: #fafaf7; }
     .row:hover { background: #f7f2ed; }
@@ -68,6 +69,9 @@
     .priority-medium { color: #8a6815; }
     .priority-low { color: #3c7160; }
     .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
+    .c-done { width: 70px; -ms-flex: 0 0 70px; flex: 0 0 70px; padding: 15px 10px 0; text-align: center; }
+    .complete-button { border: 1px solid #3c7160; background: #fff; color: #3c7160; padding: 5px 10px; cursor: pointer; font-size: 11px; font-weight: 600; }
+    .complete-button:hover { background: #3c7160; color: #fff; }
     .date-main { display: block; color: #26322d; font-size: 13px; font-weight: 600; line-height: 20px; }
     .date-context { display: block; color: #858c88; font-size: 10px; line-height: 17px; }
     .overdue .date-main { color: #a84628; }
@@ -101,8 +105,6 @@
     .action.gray { background: #77736b; }
     .action.danger { background: #a84628; }
     .action.danger:hover { background: #7f311d; }
-    .toast { display: none; position: fixed; right: 24px; bottom: 24px; width: 340px; padding: 16px 18px; background: #17211d; color: #fff; box-shadow: 0 8px 25px rgba(0,0,0,.25); z-index: 20; }
-    .toast small { color: #9fb0a8; display: block; margin-bottom: 5px; }
     .badge { display: inline-block; padding: 3px 7px; border-radius: 10px; background: #f2e8e1; color: #a84628; font-size: 11px; }
     .project-controls { display: none; padding: 9px 12px; border-bottom: 1px solid #dedcd3; background: #faf9f5; color: #6e7773; font-size: 11px; line-height: 28px; }
     .project-controls.visible { display: block; }
@@ -174,7 +176,7 @@
         <div class="workspace">
           <section class="list-card">
             <div class="table-head">
-              <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div>
+              <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div><div class="head-done"></div>
             </div>
             <div class="project-controls visible" id="projectControls">
               <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
@@ -273,7 +275,6 @@
       </section>
     </main>
   </div>
-  <div class="toast" id="toast"><small>そろそろです</small><strong id="toastText"></strong></div>
   <div class="modal-backdrop" id="exportConfirmation" role="dialog" aria-modal="true" aria-labelledby="exportConfirmationTitle">
     <div class="confirm-dialog">
       <h2 id="exportConfirmationTitle">データを書き出しますか？</h2>
@@ -306,8 +307,9 @@
     var detailSaveTimer = null;
     var detailSaveInFlight = false;
     var detailSaveQueue = null;
-    var detailSavedValues = {};
+    var detailSavedValues = {}; // itemId -> last known-saved payload object
     var detailAutoSaveItemId = null;
+    var detailAutoSaveEntityType = null;
     var localSaveQuietUntil = 0;
     var manualSaveAfterAuto = false;
 
@@ -381,7 +383,7 @@
       });
     }
 
-    function showCreatePage() {
+    function showCreatePage(presetProjectId) {
       flushDetailAutoSave();
       document.getElementById("browsePage").style.display = "none";
       document.getElementById("createPage").className = "create-page visible";
@@ -390,9 +392,18 @@
       for (var i=0; i<navs.length; i++) navs[i].className = "nav";
       loadProjectCatalog(function() {
         populateCreateProjectOptions();
+        if (presetProjectId) {
+          document.getElementById("createType").value = "task";
+          document.getElementById("createProject").value = presetProjectId;
+          updateCreateFields();
+        }
       });
       updateCreateFields();
       document.getElementById("createTitle").focus();
+    }
+
+    function addChildTask(projectId) {
+      showCreatePage(projectId);
     }
 
     function cancelCreate() {
@@ -452,12 +463,14 @@
         details: document.getElementById("createDetails").value
       };
       if (priority) payload.priority = Number(priority);
+      var parentProjectId = "";
       if (entityType === "project") {
         payload.category = document.getElementById("createCategory").value;
         payload.parent_project_id = document.getElementById("createParentProject").value || null;
         payload.project_rank = document.getElementById("createProjectRank").value || null;
       } else {
-        payload.project_id = document.getElementById("createProject").value || null;
+        parentProjectId = document.getElementById("createProject").value || "";
+        payload.project_id = parentProjectId || null;
       }
       var submit = document.getElementById("createSubmit");
       error.innerText = "";
@@ -470,9 +483,15 @@
           submit.innerText = "追加する";
           return;
         }
-        var targetView = entityType === "project"
-          ? "projects"
-          : ((entityType === "anime" || entityType === "manga") ? "anime_manga" : "all");
+        var targetView;
+        if (parentProjectId) {
+          expandedProjects[parentProjectId] = true;
+          targetView = "projects";
+        } else {
+          targetView = entityType === "project"
+            ? "projects"
+            : ((entityType === "anime" || entityType === "manga") ? "anime_manga" : "all");
+        }
         resetCreateForm();
         loadProjectCatalog();
         changeView(targetView, item.id);
@@ -596,6 +615,10 @@
         if (isProject) status = "子タスク " + childCount + "件 · " + (expandedProjects[row.id] ? "クリックで閉じる" : "クリックで展開");
         var projectClass = isProject ? " project-row" + (expandedProjects[row.id] ? " expanded" : "") : (isProjectOverview ? " project-child" : "");
         var clickAction = isProject ? "toggleProject(" + i + ")" : "selectRow(" + i + ")";
+        var showComplete = !isProject && !isHistory && !isReview && view !== "done" && view !== "archive";
+        var completeColumn = showComplete
+          ? '<div class="c-done"><button class="complete-button" onclick="event.stopPropagation(); confirmCompleteRow(' + i + ')">完了</button></div>'
+          : '<div class="c-done"></div>';
         html += '<div class="row row-type-' + escapeHtml(rowType) + projectClass + (date.overdue ? ' overdue' : '') + '" id="row-' + i + '" onclick="' + clickAction + '">' +
           '<div class="row-accent"' + accentStyle + '></div><div class="row-main">' +
           '<div class="c-title">' + titlePrefix + escapeHtml(title) + '</div>' +
@@ -604,7 +627,7 @@
           '<span class="status-text">' + escapeHtml(status) + '</span>' +
           '</div></div><div class="c-priority' + priorityClass + '" title="' + escapeHtml(row.priority_reason || "") + '">' + priority + '</div>' +
           '<div class="c-date"><span class="date-main">' + escapeHtml(date.main) + '</span>' +
-          '<span class="date-context">' + escapeHtml(date.context) + '</span></div></div>';
+          '<span class="date-context">' + escapeHtml(date.context) + '</span></div>' + completeColumn + '</div>';
       }
       if (!rows.length) html = view === "projects" && !query
         ? '<div class="empty">プロジェクトはまだありません。<br />種類を「プロジェクト」にした項目がここに並びます。</div>'
@@ -669,22 +692,25 @@
           '<button class="action orange" onclick="resolveReview(true)">承認</button>' +
           '<button class="action gray" onclick="resolveReview(false)">却下</button></div>';
       } else {
-        html += '<label class="label">タイトル</label><input id="editTitle" value="' + escapeHtml(row.title) + '" />' +
-          '<label class="label">種類</label><select id="editType">' + options(["task","schedule","idea","waiting","decision","project","anime","manga"], row.entity_type) + '</select>' +
-          '<label class="label">状態</label><select id="editStatus">' + options(["inbox","today","next","in_progress","waiting","someday","done","cancelled"], row.status) + '</select>' +
+        html += (row.entity_type === "project"
+            ? '<div class="action-row"><button class="action" onclick="addChildTask(\'' + row.id + '\')">＋子タスクを追加</button></div>'
+            : '') +
+          '<label class="label">タイトル</label><input id="editTitle" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.title) + '" />' +
+          '<label class="label">種類</label><select id="editType" onchange="scheduleDetailAutoSave()">' + options(["task","schedule","idea","waiting","decision","project","anime","manga"], row.entity_type) + '</select>' +
+          '<label class="label">状態</label><select id="editStatus" onchange="scheduleDetailAutoSave()">' + options(["inbox","today","next","in_progress","waiting","someday","done","cancelled"], row.status) + '</select>' +
           (row.entity_type === "project"
-            ? '<label class="label">カテゴリー（色は自動設定）</label><input id="editCategory" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
-              '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" value="' + escapeHtml(row.project_rank || "") + '" />' +
-              '<label class="label">親プロジェクト</label><select id="editParentProject">' + projectOptions(row.parent_project_id, row.id) + '</select>'
-            : '<label class="label">所属プロジェクト</label><select id="editProject">' + projectOptions(row.project_id, "") + '</select>') +
+            ? '<label class="label">カテゴリー（色は自動設定）</label><input id="editCategory" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.category || "") + '" placeholder="例: 仕事、個人開発、学習" />' +
+              '<label class="label">同一優先度内の序列（1が先頭）</label><input id="editProjectRank" type="number" min="1" step="1" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.project_rank || "") + '" />' +
+              '<label class="label">親プロジェクト</label><select id="editParentProject" onchange="scheduleDetailAutoSave()">' + projectOptions(row.parent_project_id, row.id) + '</select>'
+            : '<label class="label">所属プロジェクト</label><select id="editProject" onchange="scheduleDetailAutoSave()">' + projectOptions(row.project_id, "") + '</select>') +
           ((row.entity_type === "anime" || row.entity_type === "manga")
             ? '<input id="editDue" type="hidden" value="' + escapeHtml(row.due_at || "") + '" />' +
               '<label class="label">' + (row.entity_type === "anime" ? "配信日・配信スケジュール" : "発売日") + '</label>' +
-              '<input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="' + (row.entity_type === "anime" ? "例: 毎週月曜 24:00" : "例: 2026-08-03") + '" />'
-            : '<label class="label">期限（空欄なら無期限）</label><input id="editDue" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
-              '<label class="label">予定日時</label><input id="editScheduled" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />') +
-          '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
-          '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" value="' + escapeHtml(row.priority || 2) + '" />' +
+              '<input id="editScheduled" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="' + (row.entity_type === "anime" ? "例: 毎週月曜 24:00" : "例: 2026-08-03") + '" />'
+            : '<label class="label">期限（空欄なら無期限）</label><input id="editDue" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.due_at || "") + '" placeholder="2026-08-05 18:00" />' +
+              '<label class="label">予定日時</label><input id="editScheduled" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />') +
+          '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort" onchange="scheduleDetailAutoSave()">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
+          '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.priority || 2) + '" />' +
           '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="save-state" id="detailSaveState">自動保存: 保存済み</div>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
@@ -697,10 +723,40 @@
       document.getElementById("detail").innerHTML = html;
       if (view !== "history" && view !== "review") {
         detailAutoSaveItemId = row.id;
-        detailSavedValues[row.id] = row.details || "";
+        detailAutoSaveEntityType = row.entity_type;
+        detailSavedValues[row.id] = buildEditPayload(row.entity_type);
       } else {
         detailAutoSaveItemId = null;
+        detailAutoSaveEntityType = null;
       }
+    }
+
+    // Reads every editable field in the detail form into the same payload
+    // shape the server expects. Shared by the manual save button and the
+    // auto-save flow so both stay in sync as fields are added.
+    function buildEditPayload(entityType) {
+      var payload = {
+        title: document.getElementById("editTitle").value,
+        entity_type: document.getElementById("editType").value,
+        status: document.getElementById("editStatus").value,
+        due_at: document.getElementById("editDue").value || null,
+        scheduled_at: document.getElementById("editScheduled").value || null,
+        effort: Number(document.getElementById("editEffort").value || 3),
+        priority: Number(document.getElementById("editPriority").value || 2),
+        details: document.getElementById("editDetails").value
+      };
+      if (entityType === "project") {
+        payload.parent_project_id = document.getElementById("editParentProject").value || null;
+        payload.category = document.getElementById("editCategory").value;
+        payload.project_rank = document.getElementById("editProjectRank").value || null;
+      } else {
+        payload.project_id = document.getElementById("editProject").value || null;
+      }
+      return payload;
+    }
+
+    function payloadsEqual(a, b) {
+      return JSON.stringify(a) === JSON.stringify(b);
     }
 
     function options(values, selected) {
@@ -800,24 +856,38 @@
       queueCurrentDetailSave();
     }
 
+    // mshta's legacy IE engine does not reliably fire oninput/onchange while
+    // composing text through an IME (used for Japanese input) or for some
+    // select interactions, so an edit could sit unsaved indefinitely. This
+    // poll is a fallback that catches any such missed change within a
+    // second, independent of which DOM event actually fired.
+    function watchDetailAutoSave() {
+      if (detailAutoSaveItemId && document.getElementById("editDetails")) {
+        queueCurrentDetailSave();
+      }
+    }
+
     function queueCurrentDetailSave() {
-      var input = document.getElementById("editDetails");
-      if (!input || !detailAutoSaveItemId) return;
-      var value = input.value;
-      if (detailSavedValues[detailAutoSaveItemId] === value) {
+      if (!detailAutoSaveItemId || !document.getElementById("editDetails")) return;
+      var payload = buildEditPayload(detailAutoSaveEntityType);
+      if (payloadsEqual(detailSavedValues[detailAutoSaveItemId], payload)) {
         setDetailSaveState("自動保存: 保存済み", "", detailAutoSaveItemId);
         return;
       }
-      detailSaveQueue = {itemId:detailAutoSaveItemId, details:value};
+      detailSaveQueue = {itemId:detailAutoSaveItemId, payload:payload};
       processDetailSaveQueue();
     }
 
-    function updateCachedDetails(itemId, details) {
+    function updateCachedFields(itemId, payload) {
       var collections = [rows, allRows, projectChildRows, projectCatalog];
       for (var collectionIndex=0; collectionIndex<collections.length; collectionIndex++) {
         for (var itemIndex=0; itemIndex<collections[collectionIndex].length; itemIndex++) {
           if (collections[collectionIndex][itemIndex].id === itemId) {
-            collections[collectionIndex][itemIndex].details = details;
+            for (var key in payload) {
+              if (Object.prototype.hasOwnProperty.call(payload, key)) {
+                collections[collectionIndex][itemIndex][key] = payload[key];
+              }
+            }
           }
         }
       }
@@ -833,7 +903,7 @@
       if (detailSaveInFlight || !detailSaveQueue) return;
       var pending = detailSaveQueue;
       detailSaveQueue = null;
-      if (detailSavedValues[pending.itemId] === pending.details) {
+      if (payloadsEqual(detailSavedValues[pending.itemId], pending.payload)) {
         processDetailSaveQueue();
         return;
       }
@@ -842,14 +912,14 @@
       request(
         "POST",
         "/v1/items/" + encodeURIComponent(pending.itemId),
-        {details:pending.details},
+        pending.payload,
         function(err) {
           detailSaveInFlight = false;
           if (err) {
             setDetailSaveState("自動保存に失敗しました。保存ボタンを押してください。", "error", pending.itemId);
           } else {
-            detailSavedValues[pending.itemId] = pending.details;
-            updateCachedDetails(pending.itemId, pending.details);
+            detailSavedValues[pending.itemId] = pending.payload;
+            updateCachedFields(pending.itemId, pending.payload);
             localSaveQuietUntil = new Date().getTime() + 2000;
             syncChangeToken();
             if (
@@ -883,30 +953,14 @@
         return;
       }
       var row = rows[selectedIndex];
-      var payload = {
-        title: document.getElementById("editTitle").value,
-        entity_type: document.getElementById("editType").value,
-        status: document.getElementById("editStatus").value,
-        due_at: document.getElementById("editDue").value || null,
-        scheduled_at: document.getElementById("editScheduled").value || null,
-        effort: Number(document.getElementById("editEffort").value || 3),
-        priority: Number(document.getElementById("editPriority").value || 2),
-        details: document.getElementById("editDetails").value
-      };
-      if (row.entity_type === "project") {
-        payload.parent_project_id = document.getElementById("editParentProject").value || null;
-        payload.category = document.getElementById("editCategory").value;
-        payload.project_rank = document.getElementById("editProjectRank").value || null;
-      } else {
-        payload.project_id = document.getElementById("editProject").value || null;
-      }
+      var payload = buildEditPayload(row.entity_type);
       request("POST", "/v1/items/" + encodeURIComponent(row.id), payload, function(err) {
         if (err) {
           setDetailSaveState("保存に失敗しました。もう一度お試しください。", "error", row.id);
           alert(err.message);
           return;
         }
-        detailSavedValues[row.id] = payload.details;
+        detailSavedValues[row.id] = payload;
         localSaveQuietUntil = new Date().getTime() + 2000;
         loadProjectCatalog();
         loadRows();
@@ -915,8 +969,24 @@
 
     function setStatus(status) {
       if (selectedIndex < 0) return;
+      flushDetailAutoSave();
       request("POST", "/v1/items/" + encodeURIComponent(rows[selectedIndex].id) + "/status", {status:status}, function(err) {
         if (err) { alert(err.message); return; }
+        loadRows();
+      });
+    }
+
+    function confirmCompleteRow(index) {
+      var row = rows[index];
+      if (!row) return;
+      if (!confirm("「" + row.title + "」を完了にしますか？")) return;
+      flushDetailAutoSave();
+      request("POST", "/v1/items/" + encodeURIComponent(row.id) + "/status", {status:"done"}, function(err) {
+        if (err) { alert(err.message); return; }
+        if (detailAutoSaveItemId === row.id) {
+          detailAutoSaveItemId = null;
+          detailAutoSaveEntityType = null;
+        }
         loadRows();
       });
     }
@@ -931,6 +1001,7 @@
         if (err) { alert(err.message); return; }
         selectedIndex = -1;
         detailAutoSaveItemId = null;
+        detailAutoSaveEntityType = null;
         clearDetail();
         loadProjectCatalog();
         loadRows();
@@ -978,25 +1049,13 @@
       document.getElementById("rows").innerHTML = '<div class="empty">Activity Compassの保存機能に接続できません。<br />アプリを開き直してください。</div>';
     }
 
-    function pollReminders() {
-      request("GET", "/v1/reminders", null, function(err, data) {
-        if (err || !data.items || !data.items.length) return;
-        var item = data.items[0];
-        document.getElementById("toastText").innerText = item.title;
-        document.getElementById("toast").style.display = "block";
-        request("POST", "/v1/reminders/" + encodeURIComponent(item.id) + "/seen", {trigger_key:item.trigger_key}, function(){});
-        setTimeout(function(){ document.getElementById("toast").style.display = "none"; }, 12000);
-      });
-    }
-
     window.onload = function() {
       try { window.resizeTo(1180, 760); window.moveTo((screen.availWidth-1180)/2, (screen.availHeight-760)/2); } catch(e) {}
       loadRows();
       loadProjectCatalog();
-      pollReminders();
       pollChanges();
       setInterval(pollChanges, 1000);
-      setInterval(pollReminders, 30000);
+      setInterval(watchDetailAutoSave, 1000);
     };
   </script>
 </body>
