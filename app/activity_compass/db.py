@@ -221,6 +221,8 @@ class Database:
             self._ensure_column(db, "items", "project_rank", "INTEGER")
             self._ensure_column(db, "items", "project_color", "TEXT")
             self._ensure_column(db, "items", "completed_at", "TEXT")
+            self._ensure_column(db, "items", "link_service", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(db, "items", "link_url", "TEXT NOT NULL DEFAULT ''")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id)"
             )
@@ -779,8 +781,9 @@ class Database:
                     id, entity_type, title, normalized_title, details, status,
                     due_at, scheduled_at, priority, confidence, created_at, updated_at,
                     project_id, parent_project_id, effort, base_priority, priority_reason,
-                    category, category_color, project_rank, project_color, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, category_color, project_rank, project_color, completed_at,
+                    link_service, link_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_id,
@@ -805,6 +808,8 @@ class Database:
                     None,
                     project_color,
                     now if status == "done" else None,
+                    str(payload.get("link_service") or ""),
+                    str(payload.get("link_url") or ""),
                 ),
             )
             if entity_type == "project":
@@ -1114,6 +1119,8 @@ class Database:
                 "category",
                 "category_color",
                 "project_rank",
+                "link_service",
+                "link_url",
             ):
                 if key in event and event[key] is not None:
                     updates[key] = event[key]
@@ -1358,6 +1365,8 @@ class Database:
             "category",
             "category_color",
             "project_rank",
+            "link_service",
+            "link_url",
         }
         updates = {key: value for key, value in payload.items() if key in allowed}
         if not updates:

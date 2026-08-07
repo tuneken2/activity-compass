@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .db import Database
 
-API_SCHEMA_VERSION = 4
+API_SCHEMA_VERSION = 5
 
 
 class ActivityApiHandler(BaseHTTPRequestHandler):

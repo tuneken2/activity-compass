@@ -786,6 +786,56 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(updated["category"], "学習")
         self.assertEqual(updated["category_color"], "#657547")
 
+    def test_link_service_and_url_round_trip_for_anime(self) -> None:
+        item = self.db.create_item(
+            {
+                "title": "SPY×FAMILY",
+                "entity_type": "anime",
+                "link_service": "Netflix",
+                "link_url": "https://www.netflix.com/title/81579479",
+            }
+        )
+        self.assertEqual(item["link_service"], "Netflix")
+        self.assertEqual(item["link_url"], "https://www.netflix.com/title/81579479")
+
+        updated = self.db.update_item(
+            item["id"],
+            {
+                "link_service": "dアニメストア",
+                "link_url": "https://animestore.docomo.ne.jp/animestore/sc_d_pc?workId=12345",
+            },
+        )
+        self.assertEqual(updated["link_service"], "dアニメストア")
+        self.assertEqual(
+            updated["link_url"],
+            "https://animestore.docomo.ne.jp/animestore/sc_d_pc?workId=12345",
+        )
+
+    def test_sync_can_update_anime_link(self) -> None:
+        anime = self.db.create_item(
+            {"title": "配信リンク同期対象", "entity_type": "anime"}
+        )
+        result = self.db.sync(
+            {
+                "events": [
+                    {
+                        "action": "update",
+                        "entity_type": "anime",
+                        "target_id": anime["id"],
+                        "title": anime["title"],
+                        "link_service": "ABEMA",
+                        "link_url": "https://abema.tv/video/title/00000",
+                        "confidence": 0.99,
+                    }
+                ]
+            }
+        )
+
+        updated = self.db.get_item(anime["id"])
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(updated["link_service"], "ABEMA")
+        self.assertEqual(updated["link_url"], "https://abema.tv/video/title/00000")
+
     def test_reminder_trigger_defaults_missing_time_to_ten_am(self) -> None:
         trigger = Database._resolve_reminder_trigger("2026-08-05")
         self.assertEqual(trigger, datetime(2026, 8, 5, 10, 0))

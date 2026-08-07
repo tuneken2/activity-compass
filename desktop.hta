@@ -711,9 +711,14 @@
               '<label class="label">予定日時</label><input id="editScheduled" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.scheduled_at || "") + '" placeholder="2026-08-03 10:00" />') +
           '<label class="label">実装難易度 / 工数（1:小〜5:大）</label><select id="editEffort" onchange="scheduleDetailAutoSave()">' + options(["1","2","3","4","5"], String(row.effort || 3)) + '</select>' +
           '<label class="label">優先度（数字で入力: 3=高 / 2=中 / 1=低）</label><input id="editPriority" type="number" min="1" max="3" step="1" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.priority || 2) + '" />' +
+          ((row.entity_type === "anime" || row.entity_type === "manga")
+            ? '<label class="label">配信・購読サービス</label><input id="editLinkService" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.link_service || "") + '" placeholder="例: Netflix, dアニメストア" />' +
+              '<label class="label">作品ページURL</label><input id="editLinkUrl" oninput="scheduleDetailAutoSave()" value="' + escapeHtml(row.link_url || "") + '" placeholder="https://..." />'
+            : '') +
           '<label class="label">詳細</label><textarea id="editDetails" oninput="scheduleDetailAutoSave()">' + escapeHtml(row.details || "") + '</textarea>' +
           '<div class="save-state" id="detailSaveState">自動保存: 保存済み</div>' +
           '<div class="action-row"><button class="action" onclick="saveItem()">保存</button>' +
+          (row.link_url ? '<button class="action orange" onclick="openLink()">' + escapeHtml(row.link_service ? row.link_service + "で開く" : "作品ページを開く") + '</button>' : '') +
           '<button class="action gray" onclick="setStatus(\'in_progress\')">進行中</button>' +
           '<button class="action gray" onclick="setStatus(\'waiting\')">待ち</button>' +
           '<button class="action gray" onclick="setStatus(\'someday\')">いつか</button>' +
@@ -751,6 +756,10 @@
         payload.project_rank = document.getElementById("editProjectRank").value || null;
       } else {
         payload.project_id = document.getElementById("editProject").value || null;
+      }
+      if (entityType === "anime" || entityType === "manga") {
+        payload.link_service = document.getElementById("editLinkService").value;
+        payload.link_url = document.getElementById("editLinkUrl").value;
       }
       return payload;
     }
@@ -965,6 +974,23 @@
         loadProjectCatalog();
         loadRows();
       });
+    }
+
+    // mshta has no browser chrome to open a link in, so hand the URL to the
+    // OS directly via WScript.Shell.Run. That resolves it exactly like typing
+    // it into the Run dialog: the registered handler for the URL's scheme
+    // opens it, whether that's the default browser or a native app that has
+    // registered its own protocol (e.g. a streaming app's deep link).
+    function openLink() {
+      if (selectedIndex < 0) return;
+      var url = rows[selectedIndex].link_url;
+      if (!url) return;
+      try {
+        var shell = new ActiveXObject("WScript.Shell");
+        shell.Run('"' + url.replace(/"/g, "") + '"', 1, false);
+      } catch (e) {
+        window.open(url, "_blank");
+      }
     }
 
     function setStatus(status) {
