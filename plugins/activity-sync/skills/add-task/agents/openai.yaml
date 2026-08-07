@@ -1,0 +1,14 @@
+interface:
+  display_name: "タスクを即時追加"
+  short_description: "タスク名だけの入力を検知し、合言葉なしでActivity Compassへ即時に1件追加"
+  default_prompt: "Use $add-task when the input itself is an obvious task entry, and create it immediately in Activity Compass."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "activity-compass"
+      description: "Activity Compassのローカル同期API"
+      transport: "stdio"
+
+policy:
+  allow_implicit_invocation: true

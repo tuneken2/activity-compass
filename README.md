@@ -12,6 +12,8 @@ Codex / Claude Codeの会話で決まった活動情報を、合言葉ひとつ�
 
 上記の明示的な依頼があったときだけSkillが会話から変更イベントを抽出し、MCP経由でローカルアプリへ送ります。「同期」「保存」などの一般語だけでは発動しません。
 
+これとは別に、タスク名（＋期限やメモなどの補足）だけを単独で入力した場合は、合言葉なしでその1件だけを即時に追加します。詳細は[タスクの即時追加](#タスクの即時追加)を参照してください。
+
 ## 必要環境
 
 - Windows 10または11
@@ -24,6 +26,7 @@ Codex / Claude Codeの会話で決まった活動情報を、合言葉ひとつ�
 ## 実装済み
 
 - タスク、予定、アイデア、待ち、決定、プロジェクトの保存
+- タスク名だけの単独入力からの、合言葉不要・即時1件タスク追加（期限・所属プロジェクト・ステータスの自動補完）
 - 今日、次、待ち、いつか、確認待ち、更新履歴、すべての画面
 - 親プロジェクト単位で表示・非表示と並べ替えができるプロジェクト一覧
 - 一覧の優先度カラムと、所属プロジェクト・期限・工数によるタスク優先度の自動算出
@@ -121,12 +124,13 @@ Claude Codeのインストールと認証を済ませてから、PowerShellで�
 このスクリプトは次の安全なユーザー設定だけを追加します。
 
 - `~/.claude/skills/sync-activity/SKILL.md` に同期Skillをコピー
+- `~/.claude/skills/add-task/SKILL.md` にタスク即時追加Skillをコピー
 - `~/.claude/integrations/activity-compass/mcp-server.ps1` にローカルMCPサーバーをコピー
 - `activity-compass` MCPをClaude Codeのユーザースコープに登録
 
 同名のSkill、連携フォルダー、MCPがある場合は上書きせず停止します。認証情報や活動データはコピーしません。
 
-設定後はActivity Compassを起動し、Claude Codeを再起動してください。Claude Codeで `/mcp` を開いて `activity-compass` の接続を確認した後、正式コマンドまたは短縮コマンドを送ります。Skillは `/sync-activity` でも明示的に呼び出せます。
+設定後はActivity Compassを起動し、Claude Codeを再起動してください。Claude Codeで `/mcp` を開いて `activity-compass` の接続を確認した後、正式コマンドまたは短縮コマンドを送ります。Skillは `/sync-activity` や `/add-task` でも明示的に呼び出せます。
 
 Claude Codeにセットアップを任せる場合は、リポジトリ同梱の [`CLAUDE_SETUP_PROMPT.txt`](CLAUDE_SETUP_PROMPT.txt) を新しいClaude Codeセッションへ貼り付けてください。既存設定を上書きしない確認手順も含まれています。
 
@@ -134,7 +138,7 @@ Claude Codeにセットアップを任せる場合は、リポジトリ同梱の
 
 自動スクリプトを使わない場合は、次の2点を設定します。
 
-1. `plugins/activity-sync/skills/sync-activity/SKILL.md` を `~/.claude/skills/sync-activity/SKILL.md` へコピーする。
+1. `plugins/activity-sync/skills/sync-activity/SKILL.md` を `~/.claude/skills/sync-activity/SKILL.md` へ、`plugins/activity-sync/skills/add-task/SKILL.md` を `~/.claude/skills/add-task/SKILL.md` へコピーする。
 2. MCPサーバーをユーザースコープへ登録する。
 
 ```powershell
@@ -144,15 +148,24 @@ claude mcp get activity-compass
 
 `mcp-server.ps1` には `plugins/activity-sync/scripts/mcp-server.ps1` を使用します。登録後にActivity Compassが起動していないと同期は失敗します。
 
+## タスクの即時追加
+
+`sync-activity`とは別に、`add-task` Skillが次の入力を検知したときだけ合言葉なしで発動し、その場でタスクを1件だけ追加します。
+
+- タスク名だけの1行（例:「資料作成」）
+- タスク名の行に、期限・メモ・所属プロジェクトなどの補足が続く入力（例:「資料作成／来週金曜までに提出用の資料をまとめる」）
+
+質問・相談・雑談・既存タスクの言い直し・機能自体についての会話では発動しません。判断に迷う入力でも発動しません。期限やステータス、所属プロジェクトは本文から読み取れる範囲だけ自動補完し、確信度が下がる推測にはその旨を確信度に反映します。
+
 ## 使い方
 
 1. Activity Compassを起動したままにする。
 2. CodexまたはClaude Codeで、タスク・予定・決定などを含む会話を進める。
-3. 同期したい時点で正式コマンドまたは短縮コマンドを送る。
+3. 同期したい時点で正式コマンドまたは短縮コマンドを送る。単発のタスクだけ即時に追加したい場合は、タスク名（＋補足）だけを単独で入力する。
 4. アプリの「今日」「次」「確認待ち」「更新履歴」などで結果を確認する。
 5. 曖昧な完了・取消・延期・期限変更は「確認待ち」で承認または却下する。
 
-接続できない場合は、アプリを起動し直してから同じ合言葉をもう一度送ってください。
+接続できない場合は、アプリを起動し直してから同じ合言葉または同じ入力をもう一度送ってください。
 
 ## 個人データと公開範囲
 
@@ -200,6 +213,7 @@ activity-compass/
 │  └─ main.py
 ├─ plugins/activity-sync/
 │  ├─ skills/sync-activity/
+│  ├─ skills/add-task/
 │  ├─ scripts/mcp-server.ps1
 │  └─ .mcp.json
 ├─ tests/
