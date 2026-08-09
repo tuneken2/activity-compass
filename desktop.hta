@@ -16,6 +16,15 @@
     singleinstance="yes"
     sysmenu="yes"
   />
+  <script>
+    // Resize as early as possible (before the window paints its default,
+    // much smaller size) so the list never has a moment of being squeezed
+    // into an unreadably narrow title column on first launch.
+    try {
+      window.resizeTo(1480, 820);
+      window.moveTo((screen.availWidth - 1480) / 2, (screen.availHeight - 820) / 2);
+    } catch (e) {}
+  </script>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
@@ -47,9 +56,9 @@
     .detail { width: 310px; flex: 0 0 310px; overflow: auto; background: #fff; border: 1px solid #e4e1d8; padding: 20px; }
     .table-head, .row { display: -ms-flexbox; display: flex; -ms-flex-align: stretch; align-items: stretch; }
     .table-head { position: sticky; top: 0; z-index: 2; height: 38px; padding: 0 18px; background: #ece9df; color: #6e7773; font-size: 11px; font-weight: 600; -ms-flex-align: center; align-items: center; }
-    .head-title { -ms-flex: 1; flex: 1; }
+    .head-title { -ms-flex: 0 0 400px; flex: 0 0 400px; }
     .head-priority { width: 76px; text-align: center; }
-    .head-date { width: 112px; text-align: right; }
+    .head-date { -ms-flex: 1; flex: 1; min-width: 80px; text-align: right; }
     .head-done { width: 70px; text-align: center; }
     .head-link { width: 84px; text-align: center; }
     .row { position: relative; min-height: 66px; border-bottom: 1px solid #ebe9e2; cursor: pointer; background: #fff; }
@@ -57,7 +66,7 @@
     .row:hover { background: #f7f2ed; }
     .row.selected { background: #f3e4dc; box-shadow: inset 0 0 0 1px #d9a28d; }
     .row-accent { width: 6px; -ms-flex: 0 0 6px; flex: 0 0 6px; background: #3c7160; }
-    .row-main { -ms-flex: 1; flex: 1; min-width: 0; padding: 10px 12px 8px 14px; }
+    .row-main { -ms-flex: 0 0 400px; flex: 0 0 400px; padding: 10px 12px 8px 14px; }
     .c-title { font-size: 14px; line-height: 20px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .c-meta { height: 22px; color: #77807c; font-size: 11px; line-height: 22px; white-space: nowrap; overflow: hidden; }
     .type-pill { display: inline-block; height: 20px; line-height: 20px; margin-right: 8px; padding: 0 8px; background: #e8f0ec; color: #315e4f; font-weight: 600; }
@@ -69,7 +78,7 @@
     .priority-high { color: #a84628; }
     .priority-medium { color: #8a6815; }
     .priority-low { color: #3c7160; }
-    .c-date { width: 112px; -ms-flex: 0 0 112px; flex: 0 0 112px; padding: 13px 18px 0 4px; text-align: right; }
+    .c-date { -ms-flex: 1; flex: 1; min-width: 80px; padding: 13px 18px 0 4px; text-align: right; }
     .c-done { width: 70px; -ms-flex: 0 0 70px; flex: 0 0 70px; padding: 15px 10px 0; text-align: center; }
     .complete-button { border: 1px solid #3c7160; background: #fff; color: #3c7160; padding: 5px 10px; cursor: pointer; font-size: 11px; font-weight: 600; }
     .complete-button:hover { background: #3c7160; color: #fff; }
@@ -114,7 +123,8 @@
     .project-controls.visible { display: block; }
     .project-filter { border: 1px solid #c9c7be; background: #fff; color: #315e4f; margin: 0 4px 4px 0; padding: 4px 8px; cursor: pointer; font-size: 11px; }
     .project-filter.hidden { color: #9a9e9b; background: #ecebe6; text-decoration: line-through; }
-    .project-sort { float: right; height: 28px; border: 1px solid #c9c7be; background: #fff; color: #26322d; }
+    .project-sort { display: none; margin-left: 12px; height: 28px; border: 1px solid #c9c7be; background: #fff; color: #26322d; }
+    .project-sort.visible { display: inline-block; }
     .project-child { min-height: 58px; margin-left: 24px; border-left: 1px solid #dedcd3; }
     .project-child .row-main { padding-top: 7px; padding-bottom: 6px; }
     .project-child .c-title { font-weight: 600; }
@@ -173,6 +183,11 @@
         <div class="header">
           <h1 id="heading">プロジェクト</h1>
           <span class="result-count" id="resultCount"></span>
+          <select class="project-sort visible" id="projectSort" onchange="changeProjectSort()">
+            <option value="priority">優先度順</option>
+            <option value="parent">親プロジェクト順</option>
+            <option value="updated">更新順</option>
+          </select>
           <input class="search" id="searchInput" placeholder="検索" onkeydown="if(event.keyCode===13){searchItems();}" />
           <button class="refresh" id="refreshButton" onclick="manualRefresh()" title="最新のタスクを読み込む">↻ 更新</button>
           <button class="exit-button" type="button" onclick="exitApplication()" title="Activity Compassを完全に終了する">終了</button>
@@ -183,11 +198,6 @@
               <div class="head-title">項目</div><div class="head-priority">優先度</div><div class="head-date">期限 / 予定</div><div class="head-done"></div><div class="head-link"></div>
             </div>
             <div class="project-controls visible" id="projectControls">
-              <select class="project-sort" id="projectSort" onchange="changeProjectSort()">
-                <option value="priority">優先度順</option>
-                <option value="parent">親プロジェクト順</option>
-                <option value="updated">更新順</option>
-              </select>
               <span>プロジェクトをクリックすると、含まれる子タスクを表示します。</span>
             </div>
             <div class="project-controls" id="doneControls">
@@ -370,6 +380,7 @@
       document.getElementById("searchInput").value = "";
       document.getElementById("heading").innerText = labels[view];
       document.getElementById("projectControls").className = view === "projects" ? "project-controls visible" : "project-controls";
+      document.getElementById("projectSort").className = view === "projects" ? "project-sort visible" : "project-sort";
       document.getElementById("doneControls").className = view === "done" ? "project-controls visible" : "project-controls";
       document.getElementById("archiveControls").className = view === "archive" ? "project-controls visible" : "project-controls";
       var navs = document.querySelectorAll(".nav");
@@ -1083,7 +1094,7 @@
     }
 
     window.onload = function() {
-      try { window.resizeTo(1180, 760); window.moveTo((screen.availWidth-1180)/2, (screen.availHeight-760)/2); } catch(e) {}
+      try { window.resizeTo(1480, 820); window.moveTo((screen.availWidth-1480)/2, (screen.availHeight-820)/2); } catch(e) {}
       loadRows();
       loadProjectCatalog();
       pollChanges();
